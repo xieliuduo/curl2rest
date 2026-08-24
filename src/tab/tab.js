@@ -3,6 +3,7 @@ import { parseRequest, toHttp, toCurl } from "../core/format.js";
 import { substitute } from "../core/variables.js";
 import { describeError } from "../core/errors.js";
 import { loadHistory, pushHistory } from "../core/history.js";
+import { renderJsonTree } from "./json-tree.js";
 import { MSG } from "../shared/messages.js";
 
 const SAMPLE = [
@@ -18,7 +19,12 @@ const $ = (id) => document.getElementById(id);
 const statusBar = $("status-bar");
 const panelBody = $("panel-body");
 const panelHeaders = $("panel-headers");
+const bodyToolbar = $("body-toolbar");
+const headersToolbar = $("headers-toolbar");
 const errorCard = $("error-card");
+
+// 缓存最近一次响应,供复制按钮使用
+let lastResp = null;
 
 // 环境:v1 从 storage 读一个简单的键值 map(可为空)
 let envVars = {};
@@ -67,18 +73,26 @@ async function send() {
 
 // ---- 渲染响应 ----
 function renderResponse(resp) {
+  lastResp = resp;
   errorCard.classList.add("hidden");
+  bodyToolbar.classList.remove("hidden");
+  headersToolbar.classList.remove("hidden");
   const cls = "s" + String(resp.status)[0];
   statusBar.className = "status-bar " + cls;
   const hint = resp.status >= 400 ? " · 服务器返回了错误状态" : "";
   statusBar.textContent = `${resp.status} ${resp.statusText} · ${resp.timeMs}ms${hint}`;
 
-  // body:尝试 JSON 美化
-  let body = resp.body;
-  try { body = JSON.stringify(JSON.parse(resp.body), null, 2); } catch {}
-  const LIMIT = 5 * 1024 * 1024;
-  if (body.length > LIMIT) body = body.slice(0, LIMIT) + "\n…(响应内容过大,已只显示前 5MB)";
-  panelBody.textContent = body;
+  // body:能解析成 JSON 就渲染可折叠树,否则纯文本(超大截断)
+  let parsed;
+  try { parsed = JSON.parse(resp.body); } catch { parsed = undefined; }
+  if (parsed !== undefined && typeof parsed === "object" && parsed !== null) {
+    renderJsonTree(panelBody, parsed);
+  } else {
+    const LIMIT = 5 * 1024 * 1024;
+    let text = resp.body;
+    if (text.length > LIMIT) text = text.slice(0, LIMIT) + "\n…(响应内容过大,已只显示前 5MB)";
+    panelBody.textContent = text;
+  }
   panelHeaders.textContent = Object.entries(resp.headers)
     .map(([k, v]) => `${k}: ${v}`).join("\n");
 }
@@ -86,6 +100,8 @@ function renderResponse(resp) {
 // ---- 渲染友好错误卡片 ----
 function renderError(code, rawMessage) {
   const d = describeError(code);
+  bodyToolbar.classList.add("hidden");
+  headersToolbar.classList.add("hidden");
   statusBar.textContent = "请求失败";
   statusBar.className = "status-bar s5";
   errorCard.innerHTML = `
@@ -108,9 +124,25 @@ document.querySelectorAll(".tab").forEach((btn) => {
     btn.classList.add("active");
     const isBody = btn.dataset.tab === "body";
     panelBody.classList.toggle("hidden", !isBody);
+    bodyToolbar.classList.toggle("hidden", !isBody || !lastResp);
     panelHeaders.classList.toggle("hidden", isBody);
+    headersToolbar.classList.toggle("hidden", isBody || !lastResp);
   };
 });
+
+// ---- 复制响应体 / 响应头 ----
+async function copyText(text, btn) {
+  await navigator.clipboard.writeText(text);
+  const old = btn.textContent;
+  btn.textContent = "已复制";
+  setTimeout(() => { btn.textContent = old; }, 1000);
+}
+$("btn-copy-body").onclick = (e) => { if (lastResp) copyText(lastResp.body, e.target); };
+$("btn-copy-headers").onclick = (e) => {
+  if (!lastResp) return;
+  const text = Object.entries(lastResp.headers).map(([k, v]) => `${k}: ${v}`).join("\n");
+  copyText(text, e.target);
+};
 
 // ---- 历史记录 ----
 async function refreshHistory(list) {
@@ -124,3 +156,34 @@ async function refreshHistory(list) {
   });
 }
 loadHistory().then(refreshHistory);
+
+// ---- 可拖拽分隔线:调整左右宽度,比例存 localStorage ----
+(() => {
+  const layout = document.querySelector(".layout");
+  const left = document.querySelector(".left");
+  const gutter = $("gutter");
+  const KEY = "curl2rest_split";
+
+  const saved = parseFloat(localStorage.getItem(KEY));
+  if (saved > 10 && saved < 90) left.style.flexBasis = saved + "%";
+
+  let dragging = false;
+  gutter.addEventListener("mousedown", () => {
+    dragging = true;
+    gutter.classList.add("dragging");
+    document.body.style.userSelect = "none";
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    const rect = layout.getBoundingClientRect();
+    const pct = ((e.clientX - rect.left) / rect.width) * 100;
+    if (pct > 10 && pct < 90) left.style.flexBasis = pct + "%";
+  });
+  window.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false;
+    gutter.classList.remove("dragging");
+    document.body.style.userSelect = "";
+    localStorage.setItem(KEY, parseFloat(left.style.flexBasis));
+  });
+})();

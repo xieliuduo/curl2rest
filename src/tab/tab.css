@@ -1,8 +1,11 @@
 * { box-sizing: border-box; }
 body { margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-serif; }
 .layout { display: flex; height: 100vh; }
-.left, .right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.left { border-right: 1px solid #e2e2e2; }
+.left, .right { display: flex; flex-direction: column; min-width: 0; }
+.left { flex: 0 0 50%; border-right: 1px solid #e2e2e2; }
+.right { flex: 1 1 0; }
+.gutter { flex: 0 0 6px; cursor: col-resize; background: #eee; transition: background 0.15s; }
+.gutter:hover, .gutter.dragging { background: #93c5fd; }
 .toolbar { display: flex; gap: 8px; padding: 8px; border-bottom: 1px solid #eee; align-items: center; }
 .toolbar button, .toolbar select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
 .toolbar .primary { background: #2563eb; color: #fff; border-color: #2563eb; }
@@ -27,3 +30,24 @@ body { margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-ser
 .error-card .label { color: #888; margin-right: 6px; }
 .error-card details { margin-top: 10px; }
 .error-card pre { background: #fff; padding: 8px; border-radius: 6px; overflow: auto; font-size: 12px; }
+
+/* JSON 折叠树 */
+.jt-node { font-family: ui-monospace, Menlo, monospace; font-size: 13px; line-height: 1.6; }
+.jt-head { display: inline-flex; align-items: center; gap: 2px; cursor: default; border-radius: 4px; padding: 0 2px; }
+.jt-node > .jt-head:hover { background: #f3f4f6; }
+.jt-toggle { cursor: pointer; width: 14px; display: inline-block; color: #888; user-select: none; }
+.jt-children { padding-left: 18px; border-left: 1px dashed #e5e7eb; margin-left: 6px; }
+.jt-key { color: #7c3aed; }
+.jt-string { color: #16a34a; }
+.jt-number { color: #2563eb; }
+.jt-bool { color: #d97706; }
+.jt-null { color: #9ca3af; }
+.jt-punct { color: #9ca3af; }
+.jt-copy { display: none; margin-left: 8px; font-size: 11px; padding: 1px 6px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; }
+.jt-head:hover .jt-copy { display: inline-block; }
+
+/* 面板顶部复制按钮 */
+.panel-toolbar { display: flex; justify-content: flex-end; padding: 4px 8px; border-bottom: 1px solid #f0f0f0; }
+.panel-toolbar button { font-size: 12px; padding: 3px 10px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
+.panel-toolbar button:hover { background: #f3f4f6; }
+.panel-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }

@@ -20,14 +20,23 @@
           <ul id="history-list"></ul>
         </div>
       </section>
+      <div id="gutter" class="gutter" title="拖拽调整宽度"></div>
       <section class="right">
         <div id="status-bar" class="status-bar"></div>
         <div class="tabs">
           <button class="tab active" data-tab="body">Body</button>
           <button class="tab" data-tab="headers">Headers</button>
         </div>
-        <pre id="panel-body" class="panel"></pre>
-        <pre id="panel-headers" class="panel hidden"></pre>
+        <div class="panel-wrap">
+          <div id="body-toolbar" class="panel-toolbar hidden">
+            <button id="btn-copy-body">复制响应体</button>
+          </div>
+          <div id="panel-body" class="panel"></div>
+          <div id="headers-toolbar" class="panel-toolbar hidden">
+            <button id="btn-copy-headers">复制响应头</button>
+          </div>
+          <pre id="panel-headers" class="panel hidden"></pre>
+        </div>
         <div id="error-card" class="error-card hidden"></div>
       </section>
     </div>
