@@ -4,6 +4,7 @@ import {
   addModule, renameModule, removeModule,
   addRequest, renameRequest, updateRequestNote, removeRequest, moveRequest,
   reorderProject, reorderModule, reorderRequest,
+  exportState, importState,
 } from "../../src/core/collections.js";
 
 describe("emptyState", () => {
@@ -221,5 +222,44 @@ describe("reorderRequest", () => {
     const ridA = s.projects[0].modules[0].requests[0].id;
     s = reorderRequest(s, pid, mid, ridA, 1);
     expect(s.projects[0].modules[0].requests.map((r) => r.name)).toEqual(["b", "a"]);
+  });
+});
+
+describe("exportState", () => {
+  it("返回与状态等价的可序列化对象", () => {
+    const s = addProject(emptyState(), "p");
+    const out = exportState(s);
+    expect(JSON.parse(JSON.stringify(out))).toEqual(s);
+  });
+});
+
+describe("importState replace", () => {
+  it("整棵替换现有数据", () => {
+    const cur = addProject(emptyState(), "旧");
+    const incoming = addProject(emptyState(), "新");
+    const s = importState(cur, incoming, "replace");
+    expect(s.projects.map((p) => p.name)).toEqual(["新"]);
+  });
+  it("结构非法(无 projects 数组)时原样返回", () => {
+    const cur = addProject(emptyState(), "旧");
+    expect(importState(cur, { foo: 1 }, "replace")).toEqual(cur);
+  });
+});
+
+describe("importState merge", () => {
+  it("同名项目合并模块,不同名追加项目", () => {
+    let cur = addProject(emptyState(), "共享");
+    const pid = cur.projects[0].id;
+    cur = addModule(cur, pid, "已有模块");
+
+    let incoming = addProject(emptyState(), "共享");
+    const ipid = incoming.projects[0].id;
+    incoming = addModule(incoming, ipid, "新模块");
+    incoming = addProject(incoming, "独立项目");
+
+    const s = importState(cur, incoming, "merge");
+    const shared = s.projects.find((p) => p.name === "共享");
+    expect(shared.modules.map((m) => m.name).sort()).toEqual(["已有模块", "新模块"]);
+    expect(s.projects.map((p) => p.name)).toContain("独立项目");
   });
 });

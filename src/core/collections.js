@@ -168,3 +168,43 @@ export function reorderRequest(state, pid, mid, rid, dir) {
     requests: swapById(m.requests, rid, dir),
   }));
 }
+
+/** 导出:直接返回状态(已是纯数据,可 JSON 序列化) */
+export function exportState(state) {
+  return state;
+}
+
+/** 校验导入结构:必须是 { projects: [...] } */
+function isValidState(x) {
+  return x && typeof x === "object" && Array.isArray(x.projects);
+}
+
+/**
+ * 导入。mode="replace" 整棵替换;mode="merge" 按项目名合并(同名并模块、追加请求),
+ * 结构非法时原样返回当前状态。
+ */
+export function importState(state, incoming, mode = "replace") {
+  if (!isValidState(incoming)) return state;
+  if (mode === "replace") {
+    return { projects: incoming.projects };
+  }
+  // merge:以当前状态为基,逐个并入 incoming 的项目
+  let result = { projects: state.projects.map((p) => ({ ...p, modules: [...p.modules] })) };
+  incoming.projects.forEach((ip) => {
+    const existing = result.projects.find((p) => p.name === ip.name);
+    if (!existing) {
+      result.projects.push(ip);
+      return;
+    }
+    // 同名项目:按模块名合并
+    ip.modules.forEach((im) => {
+      const em = existing.modules.find((m) => m.name === im.name);
+      if (!em) {
+        existing.modules.push(im);
+      } else {
+        em.requests = [...em.requests, ...im.requests];
+      }
+    });
+  });
+  return result;
+}
