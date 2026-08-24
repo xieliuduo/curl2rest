@@ -189,7 +189,12 @@ export function importState(state, incoming, mode = "replace") {
     return { projects: incoming.projects };
   }
   // merge:以当前状态为基,逐个并入 incoming 的项目
-  let result = { projects: state.projects.map((p) => ({ ...p, modules: [...p.modules] })) };
+  let result = {
+    projects: state.projects.map((p) => ({
+      ...p,
+      modules: p.modules.map((m) => ({ ...m, requests: [...m.requests] })),
+    })),
+  };
   incoming.projects.forEach((ip) => {
     const existing = result.projects.find((p) => p.name === ip.name);
     if (!existing) {

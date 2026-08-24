@@ -262,4 +262,27 @@ describe("importState merge", () => {
     expect(shared.modules.map((m) => m.name).sort()).toEqual(["已有模块", "新模块"]);
     expect(s.projects.map((p) => p.name)).toContain("独立项目");
   });
+
+  it("同名项目同名模块:请求追加且不污染入参", () => {
+    let cur = addProject(emptyState(), "共享");
+    const pid = cur.projects[0].id;
+    cur = addModule(cur, pid, "M");
+    const mid = cur.projects[0].modules[0].id;
+    cur = addRequest(cur, pid, mid, { method: "GET", url: "https://a", headers: {}, body: "", name: "a" });
+
+    let incoming = addProject(emptyState(), "共享");
+    const ipid = incoming.projects[0].id;
+    incoming = addModule(incoming, ipid, "M");
+    const imid = incoming.projects[0].modules[0].id;
+    incoming = addRequest(incoming, ipid, imid, { method: "POST", url: "https://b", headers: {}, body: "", name: "b" });
+
+    const before = JSON.stringify(cur);
+    const s = importState(cur, incoming, "merge");
+
+    // 同名模块的请求被追加
+    const m = s.projects[0].modules.find((x) => x.name === "M");
+    expect(m.requests.map((r) => r.name)).toEqual(["a", "b"]);
+    // 入参未被污染(纯函数)
+    expect(JSON.stringify(cur)).toBe(before);
+  });
 });
