@@ -113,3 +113,42 @@ body { margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-ser
 .env-var-add button { padding: 6px 10px; border: 1px solid #93c5fd; color: #2563eb; border-radius: 6px; background: #fff; cursor: pointer; white-space: nowrap; }
 .env-hint { margin-top: auto; padding-top: 14px; font-size: 12px; color: #999; }
 .env-hint code { background: #f3f4f6; padding: 1px 5px; border-radius: 4px; }
+
+/* 请求库侧边栏 */
+.sidebar { flex: 0 0 240px; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid #e2e2e2; background: #fafafa; overflow: hidden; transition: flex-basis 0.15s; }
+.layout.sidebar-collapsed .sidebar { flex-basis: 0; border-right: none; }
+.sidebar-head { display: flex; align-items: center; gap: 4px; padding: 8px; border-bottom: 1px solid #eee; }
+.sidebar-title { font-size: 13px; font-weight: 700; margin-right: auto; white-space: nowrap; }
+.sidebar-head button { font-size: 11px; padding: 3px 6px; border: 1px solid #ccc; border-radius: 5px; background: #fff; cursor: pointer; white-space: nowrap; }
+.sidebar-toggle { flex: 0 0 16px; border: none; border-right: 1px solid #e2e2e2; background: #eee; cursor: pointer; font-size: 10px; color: #666; padding: 0; }
+.sidebar-toggle:hover { background: #ddd; }
+.layout.sidebar-collapsed .sidebar-toggle { transform: scaleX(-1); }
+.collection-tree { flex: 1; overflow: auto; padding: 6px; }
+.collection-tree .ct-empty { color: #bbb; font-size: 12px; padding: 16px 6px; line-height: 1.6; }
+
+/* 树节点通用 */
+.ct-node { font-size: 13px; }
+.ct-row { display: flex; align-items: center; gap: 4px; padding: 3px 4px; border-radius: 5px; white-space: nowrap; }
+.ct-row:hover { background: #eef2ff; }
+.ct-toggle { width: 14px; flex: 0 0 14px; cursor: pointer; color: #888; user-select: none; text-align: center; }
+.ct-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; cursor: pointer; border: 1px solid transparent; border-radius: 4px; padding: 1px 4px; }
+.ct-label:hover { border-color: #ddd; }
+.ct-label:focus { border-color: #2563eb; outline: none; background: #fff; }
+.ct-req .ct-label { color: #2563eb; }
+.ct-actions { display: none; gap: 2px; }
+.ct-row:hover .ct-actions { display: inline-flex; }
+.ct-actions button { border: none; background: none; cursor: pointer; font-size: 12px; color: #888; padding: 0 2px; }
+.ct-actions button:hover { color: #2563eb; }
+.ct-actions button.ct-del:hover { color: #dc2626; }
+.ct-children { padding-left: 14px; }
+.ct-req-note { margin: 2px 0 4px 18px; width: calc(100% - 24px); box-sizing: border-box; font-size: 12px; border: 1px solid #eee; border-radius: 5px; padding: 3px 6px; resize: vertical; min-height: 26px; font-family: inherit; }
+
+/* 保存到弹窗 */
+.save-box { width: 420px; height: auto; }
+.save-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.save-row { display: flex; align-items: center; gap: 8px; }
+.save-row > span { flex: 0 0 44px; font-size: 13px; color: #555; }
+.save-row select, .save-row input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+.save-row button { padding: 6px 10px; border: 1px solid #93c5fd; color: #2563eb; border-radius: 6px; background: #fff; cursor: pointer; white-space: nowrap; }
+.save-actions { display: flex; justify-content: flex-end; }
+.save-actions .primary { background: #2563eb; color: #fff; border: 1px solid #2563eb; padding: 7px 20px; border-radius: 6px; cursor: pointer; }
