@@ -56,6 +56,16 @@ npm run dev      # 开发模式(热更新)
 
 Vite 5 + @crxjs/vite-plugin(MV3 打包)、CodeMirror 6(编辑器)、Vitest(单测)、chrome.storage.local(持久化)。
 
+## 版本与发布
+
+- 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/),单一数据源为 `package.json` 的 `version` 字段。
+- 构建时 Vite 会把该版本号注入 UI(标签页工具栏右侧显示 `vX.Y.Z`)。
+- 每次发布前:
+  1. 更新 `package.json` 与 `manifest.json` 的 `version`(保持一致)。
+  2. 在 `CHANGELOG.md` 把"未发布"内容归入新版本号并写上日期。
+  3. 提交并打 tag:`git tag v0.1.0`。
+- 变更记录见 [CHANGELOG.md](./CHANGELOG.md)。
+
 ## 目录结构
 
 ```

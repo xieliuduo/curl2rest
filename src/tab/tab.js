@@ -15,6 +15,9 @@ const SAMPLE = [
 
 const editor = createEditor(document.getElementById("editor"), SAMPLE);
 
+// 显示版本号(构建时由 Vite 从 package.json 注入)
+document.getElementById("app-version").textContent = "v" + __APP_VERSION__;
+
 const $ = (id) => document.getElementById(id);
 const statusBar = $("status-bar");
 const panelBody = $("panel-body");
