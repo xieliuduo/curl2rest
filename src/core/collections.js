@@ -213,3 +213,17 @@ export function importState(state, incoming, mode = "replace") {
   });
   return result;
 }
+
+// ---- 持久化 ----
+
+/** 从 chrome.storage.local 读请求库 */
+export async function loadCollections() {
+  const got = await chrome.storage.local.get(KEY);
+  return got[KEY] || emptyState();
+}
+
+/** 持久化请求库,返回传入状态 */
+export async function saveCollections(state) {
+  await chrome.storage.local.set({ [KEY]: state });
+  return state;
+}
