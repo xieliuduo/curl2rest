@@ -119,3 +119,21 @@ export function removeRequest(state, pid, mid, rid) {
     requests: m.requests.filter((r) => r.id !== rid),
   }));
 }
+
+/** 内部:在整棵树里按 (pid,mid,rid) 找请求对象,找不到返回 null */
+function findRequest(state, pid, mid, rid) {
+  const p = state.projects.find((x) => x.id === pid);
+  const m = p && p.modules.find((x) => x.id === mid);
+  return (m && m.requests.find((x) => x.id === rid)) || null;
+}
+
+/** 把请求从 (fromPid,fromMid) 移到 (toPid,toMid),保留原 id 与字段 */
+export function moveRequest(state, fromPid, fromMid, toPid, toMid, rid) {
+  const req = findRequest(state, fromPid, fromMid, rid);
+  if (!req) return state;
+  const removed = removeRequest(state, fromPid, fromMid, rid);
+  return mapModule(removed, toPid, toMid, (m) => ({
+    ...m,
+    requests: [...m.requests, req],
+  }));
+}

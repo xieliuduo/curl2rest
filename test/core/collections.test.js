@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   emptyState, addProject, renameProject, removeProject,
   addModule, renameModule, removeModule,
-  addRequest, renameRequest, updateRequestNote, removeRequest,
+  addRequest, renameRequest, updateRequestNote, removeRequest, moveRequest,
 } from "../../src/core/collections.js";
 
 describe("emptyState", () => {
@@ -156,5 +156,30 @@ describe("removeRequest", () => {
     const rid = s.projects[0].modules[0].requests[0].id;
     s = removeRequest(s, pid, mid, rid);
     expect(s.projects[0].modules[0].requests.map((r) => r.name)).toEqual(["b"]);
+  });
+});
+
+describe("moveRequest", () => {
+  it("把请求从一个模块移到另一个模块(可跨项目)", () => {
+    let s = addProject(emptyState(), "p");
+    const pid = s.projects[0].id;
+    s = addModule(addModule(s, pid, "src"), pid, "dst");
+    const srcMid = s.projects[0].modules[0].id;
+    const dstMid = s.projects[0].modules[1].id;
+    s = addRequest(s, pid, srcMid, { method: "GET", url: "https://a", headers: {}, body: "" });
+    const rid = s.projects[0].modules[0].requests[0].id;
+
+    s = moveRequest(s, pid, srcMid, pid, dstMid, rid);
+
+    expect(s.projects[0].modules[0].requests).toHaveLength(0);
+    expect(s.projects[0].modules[1].requests).toHaveLength(1);
+    expect(s.projects[0].modules[1].requests[0].id).toBe(rid);
+  });
+  it("源请求不存在时原样返回", () => {
+    let s = addProject(emptyState(), "p");
+    const pid = s.projects[0].id;
+    s = addModule(s, pid, "m");
+    const mid = s.projects[0].modules[0].id;
+    expect(moveRequest(s, pid, mid, pid, mid, "nope")).toEqual(s);
   });
 });
