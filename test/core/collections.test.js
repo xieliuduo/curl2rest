@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   emptyState, addProject, renameProject, removeProject,
   addModule, renameModule, removeModule,
-  addRequest, renameRequest, updateRequestNote, removeRequest, moveRequest,
+  addRequest, renameRequest, updateRequestNote, updateRequest, removeRequest, moveRequest,
   reorderProject, reorderModule, reorderRequest,
   exportState, importState,
 } from "../../src/core/collections.js";
@@ -158,6 +158,47 @@ describe("renameRequest / updateRequestNote", () => {
     const rid = s.projects[0].modules[0].requests[0].id;
     s = updateRequestNote(s, pid, mid, rid, "这是登录接口");
     expect(s.projects[0].modules[0].requests[0].note).toBe("这是登录接口");
+  });
+});
+
+describe("updateRequest", () => {
+  it("覆盖 method/url/headers/body,保留 id/name/note", () => {
+    let { s, pid, mid } = withModule();
+    s = addRequest(s, pid, mid, { ...REQ, name: "登录", note: "备注" });
+    const orig = s.projects[0].modules[0].requests[0];
+    const rid = orig.id;
+    s = updateRequest(s, pid, mid, rid, {
+      method: "POST", url: "https://y.com", headers: { a: "1" }, body: "x",
+    });
+    const r = s.projects[0].modules[0].requests[0];
+    expect(r.id).toBe(rid);       // id 不变
+    expect(r.name).toBe("登录");   // 名称保留
+    expect(r.note).toBe("备注");   // 备注保留
+    expect(r.method).toBe("POST"); // 内容被覆盖
+    expect(r.url).toBe("https://y.com");
+    expect(r.headers).toEqual({ a: "1" });
+    expect(r.body).toBe("x");
+  });
+  it("传入的 id/name/note 不会污染(只取内容字段)", () => {
+    let { s, pid, mid } = withModule();
+    s = addRequest(s, pid, mid, { ...REQ, name: "原名", note: "原注" });
+    const rid = s.projects[0].modules[0].requests[0].id;
+    s = updateRequest(s, pid, mid, rid, {
+      id: "hack", name: "篡改", note: "篡改", method: "PUT", url: "https://z", headers: {}, body: "",
+    });
+    const r = s.projects[0].modules[0].requests[0];
+    expect(r.id).toBe(rid);
+    expect(r.name).toBe("原名");
+    expect(r.note).toBe("原注");
+    expect(r.method).toBe("PUT");
+  });
+  it("不修改原状态(纯函数)", () => {
+    let { s, pid, mid } = withModule();
+    s = addRequest(s, pid, mid, REQ);
+    const rid = s.projects[0].modules[0].requests[0].id;
+    const before = JSON.stringify(s);
+    updateRequest(s, pid, mid, rid, { method: "POST", url: "https://y", headers: {}, body: "" });
+    expect(JSON.stringify(s)).toBe(before);
   });
 });
 

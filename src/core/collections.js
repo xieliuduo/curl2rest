@@ -112,6 +112,17 @@ export function updateRequestNote(state, pid, mid, rid, note) {
   }));
 }
 
+/** 覆盖请求内容(method/url/headers/body),保留 id/name/note */
+export function updateRequest(state, pid, mid, rid, req) {
+  const { method, url, headers, body } = req;
+  return mapModule(state, pid, mid, (m) => ({
+    ...m,
+    requests: m.requests.map((r) =>
+      r.id === rid ? { ...r, method, url, headers, body } : r
+    ),
+  }));
+}
+
 /** 删除请求 */
 export function removeRequest(state, pid, mid, rid) {
   return mapModule(state, pid, mid, (m) => ({

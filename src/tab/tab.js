@@ -13,7 +13,7 @@ import {
   loadCollections, saveCollections,
   addProject, renameProject, removeProject,
   addModule, renameModule, removeModule,
-  addRequest, renameRequest, updateRequestNote, removeRequest,
+  addRequest, renameRequest, updateRequestNote, updateRequest, removeRequest,
   moveRequest, reorderProject, reorderModule, reorderRequest,
   exportState, importState,
 } from "../core/collections.js";
@@ -25,7 +25,7 @@ const SAMPLE = [
   '{\n  "name": "sample",\n  "time": "Wed, 21 Oct 2015 18:27:50 GMT"\n}',
 ].join("\n");
 
-const editor = createEditor(document.getElementById("editor"), SAMPLE);
+const editor = createEditor(document.getElementById("editor"), SAMPLE, () => onEditorChange());
 
 // 显示版本号(构建时由 Vite 从 package.json 注入)
 document.getElementById("app-version").textContent = "v" + __APP_VERSION__;
@@ -171,6 +171,7 @@ let historyCache = [];
 // 把某条历史回填到编辑器(优先按原格式,退回 HTTP 报文)
 function loadIntoEditor(item) {
   editor.setValue(toHttp(item));
+  if (typeof clearActiveRef === "function") clearActiveRef(); // 历史回填不关联请求库
 }
 
 // 左下角历史列表:可滚动,单条可改名/备注/回填/删除(数据与弹窗同源)
@@ -568,6 +569,39 @@ let colState = { projects: [] };
 // 记录展开状态(id 集合),避免重渲染后全部折叠
 const expanded = new Set();
 
+// 当前编辑器关联的请求库条目(用于「更新到库」);null 表示未关联
+let activeRef = null;        // { pid, mid, rid, name }
+let activeSnapshot = "";     // 关联时编辑器的原始内容,用于判断是否被改动
+
+// 建立/清除编辑器与某条请求的关联
+function setActiveRef(pid, mid, rid, name, text) {
+  activeRef = { pid, mid, rid, name };
+  activeSnapshot = text;
+  refreshUpdateBtn();
+}
+function clearActiveRef() {
+  activeRef = null;
+  activeSnapshot = "";
+  refreshUpdateBtn();
+}
+
+// 编辑器内容变化时:关联存在且内容与快照不一致 → 高亮更新按钮
+function onEditorChange() {
+  refreshUpdateBtn();
+}
+
+// 刷新「更新到库」按钮的显隐与脏高亮
+function refreshUpdateBtn() {
+  const btn = $("btn-update-collection");
+  if (!btn) return;
+  if (!activeRef) { btn.classList.add("hidden"); return; }
+  btn.classList.remove("hidden");
+  const dirty = editor.getValue() !== activeSnapshot;
+  btn.classList.toggle("dirty", dirty);
+  btn.textContent = dirty ? `⬆ 更新到库 *` : `⬆ 更新到库`;
+  btn.title = `更新「${activeRef.name}」到请求库`;
+}
+
 async function saveCol() {
   await saveCollections(colState);
 }
@@ -677,7 +711,12 @@ function renderModule(p, m) {
       { icon: "＋", title: "新建请求", fn: async () => {
           const req = { method: "GET", url: "https://", headers: {}, body: "", name: "新请求" };
           colState = addRequest(colState, p.id, m.id, req); expanded.add(m.id); await saveCol(); refreshTree();
-          editor.setValue(toHttp(req));
+          // 回填模板并关联到这条新请求
+          const mod = colState.projects.find((x) => x.id === p.id).modules.find((x) => x.id === m.id);
+          const created = mod.requests[mod.requests.length - 1];
+          const text = toHttp(created);
+          editor.setValue(text);
+          setActiveRef(p.id, m.id, created.id, created.name, text);
         } },
       { icon: "✎", title: "重命名模块", fn: async () => {
           const name = prompt("重命名模块", m.name); if (name === null) return;
@@ -720,13 +759,20 @@ async function moveRequestFlow(p, m, r) {
   if (t.pid === p.id && t.mid === m.id) return; // 原地不动
   colState = moveRequest(colState, p.id, m.id, t.pid, t.mid, r.id);
   expanded.add(t.pid); expanded.add(t.mid);
+  // 若移动的是当前关联请求,同步关联到新位置
+  if (activeRef && activeRef.rid === r.id) { activeRef.pid = t.pid; activeRef.mid = t.mid; }
   await saveCol(); refreshTree();
 }
 
 function renderRequest(p, m, r) {
   const node = document.createElement("div");
   node.className = "ct-node";
-  const open = () => loadIntoEditor(r);
+  // 回填到编辑器并建立「更新到库」关联(快照用实际写入的文本)
+  const open = () => {
+    const text = toHttp(r);
+    editor.setValue(text);
+    setActiveRef(p.id, m.id, r.id, r.name, text);
+  };
   const row = makeRow("req", r.id, r.name,
     open, // 点名字:回填到编辑器
     [
@@ -734,12 +780,15 @@ function renderRequest(p, m, r) {
       { icon: "✎", title: "重命名请求", fn: async () => {
           const name = prompt("重命名请求", r.name); if (name === null) return;
           colState = renameRequest(colState, p.id, m.id, r.id, name); await saveCol(); refreshTree();
+          if (activeRef && activeRef.rid === r.id) { activeRef.name = name.trim() || r.name; refreshUpdateBtn(); }
         } },
       { icon: "📝", title: "编辑备注", fn: () => toggleNote(node, p, m, r) },
       { icon: "⇄", title: "移动到其他模块", fn: () => moveRequestFlow(p, m, r) },
       { icon: "↑", title: "上移", fn: async () => { colState = reorderRequest(colState, p.id, m.id, r.id, -1); await saveCol(); refreshTree(); } },
       { icon: "↓", title: "下移", fn: async () => { colState = reorderRequest(colState, p.id, m.id, r.id, 1); await saveCol(); refreshTree(); } },
       { icon: "🗑", title: "删除请求", danger: true, fn: async () => {
+          if (!confirm(`删除请求「${r.name}」?`)) return;
+          if (activeRef && activeRef.rid === r.id) clearActiveRef();
           colState = removeRequest(colState, p.id, m.id, r.id); await saveCol(); refreshTree();
         } },
     ]);
@@ -816,15 +865,17 @@ $("import-file").onchange = async (e) => {
 // ==== 「保存到」弹窗:入口 1(编辑器)/入口 2(历史)共用 ====
 const saveModal = $("save-modal");
 let pendingReq = null; // 待保存的请求对象
+let pendingFromEditor = false; // 来源是否为编辑器(入口1);决定保存后是否建立更新关联
 
-// 打开弹窗,预填名称;req 为已解析的请求对象
-function openSaveModal(req) {
+// 打开弹窗,预填名称;req 为已解析的请求对象;fromEditor 标记来源
+function openSaveModal(req, fromEditor = false) {
   pendingReq = req;
+  pendingFromEditor = fromEditor;
   $("save-name").value = req.name || `${req.method} ${req.url}`;
   refreshSaveSelects();
   saveModal.classList.remove("hidden");
 }
-function closeSaveModal() { saveModal.classList.add("hidden"); pendingReq = null; }
+function closeSaveModal() { saveModal.classList.add("hidden"); pendingReq = null; pendingFromEditor = false; }
 
 // 刷新项目/模块下拉(模块随项目联动)
 function refreshSaveSelects() {
@@ -882,6 +933,12 @@ $("save-confirm").onclick = async () => {
   colState = addRequest(colState, pid, mid, req);
   expanded.add(pid); expanded.add(mid);
   await saveCol(); refreshTree();
+  // 若来源是编辑器,把编辑器关联到刚保存的这条请求,便于后续「更新到库」
+  if (pendingFromEditor) {
+    const mod = colState.projects.find((x) => x.id === pid).modules.find((x) => x.id === mid);
+    const created = mod.requests[mod.requests.length - 1];
+    setActiveRef(pid, mid, created.id, created.name, editor.getValue());
+  }
   closeSaveModal();
 };
 
@@ -897,7 +954,24 @@ $("btn-save-collection").onclick = () => {
     renderError(e.code, e.message);
     return;
   }
-  openSaveModal(req);
+  openSaveModal(req, true);
+};
+
+// 「更新到库」:把当前编辑内容覆盖保存回关联的请求(覆盖前确认)
+$("btn-update-collection").onclick = async () => {
+  if (!activeRef) return;
+  let req;
+  try {
+    req = parseRequest(substitute(editor.getValue(), activeVars()));
+  } catch (e) {
+    renderError(e.code, e.message);
+    return;
+  }
+  if (!confirm(`确定用当前编辑内容更新「${activeRef.name}」?`)) return;
+  colState = updateRequest(colState, activeRef.pid, activeRef.mid, activeRef.rid, req);
+  await saveCol(); refreshTree();
+  activeSnapshot = editor.getValue(); // 重置快照,回到未改动状态
+  refreshUpdateBtn();
 };
 
 // ---- 初始化 ----

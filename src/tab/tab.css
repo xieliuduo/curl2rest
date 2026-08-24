@@ -9,6 +9,8 @@ body { margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-ser
 .toolbar { display: flex; gap: 8px; padding: 8px; border-bottom: 1px solid #eee; align-items: center; }
 .toolbar button, .toolbar select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
 .toolbar .primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+#btn-update-collection { color: #b45309; border-color: #fcd34d; }
+#btn-update-collection.dirty { background: #f59e0b; color: #fff; border-color: #f59e0b; font-weight: 600; }
 .app-version { margin-left: auto; font-size: 12px; color: #aaa; }
 .editor { flex: 1; overflow: auto; min-height: 60px; }
 .editor .cm-editor { height: 100%; }
