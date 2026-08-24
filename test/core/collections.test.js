@@ -3,6 +3,7 @@ import {
   emptyState, addProject, renameProject, removeProject,
   addModule, renameModule, removeModule,
   addRequest, renameRequest, updateRequestNote, removeRequest, moveRequest,
+  reorderProject, reorderModule, reorderRequest,
 } from "../../src/core/collections.js";
 
 describe("emptyState", () => {
@@ -181,5 +182,44 @@ describe("moveRequest", () => {
     s = addModule(s, pid, "m");
     const mid = s.projects[0].modules[0].id;
     expect(moveRequest(s, pid, mid, pid, mid, "nope")).toEqual(s);
+  });
+});
+
+describe("reorderProject", () => {
+  it("下移把项目与后一个交换", () => {
+    let s = addProject(addProject(emptyState(), "a"), "b");
+    const pidA = s.projects[0].id;
+    s = reorderProject(s, pidA, 1);
+    expect(s.projects.map((p) => p.name)).toEqual(["b", "a"]);
+  });
+  it("首个上移越界,原样返回", () => {
+    let s = addProject(addProject(emptyState(), "a"), "b");
+    const pidA = s.projects[0].id;
+    expect(reorderProject(s, pidA, -1)).toEqual(s);
+  });
+});
+
+describe("reorderModule", () => {
+  it("下移模块", () => {
+    let s = addProject(emptyState(), "p");
+    const pid = s.projects[0].id;
+    s = addModule(addModule(s, pid, "a"), pid, "b");
+    const midA = s.projects[0].modules[0].id;
+    s = reorderModule(s, pid, midA, 1);
+    expect(s.projects[0].modules.map((m) => m.name)).toEqual(["b", "a"]);
+  });
+});
+
+describe("reorderRequest", () => {
+  it("下移请求", () => {
+    let s = addProject(emptyState(), "p");
+    const pid = s.projects[0].id;
+    s = addModule(s, pid, "m");
+    const mid = s.projects[0].modules[0].id;
+    s = addRequest(s, pid, mid, { method: "GET", url: "https://a", headers: {}, body: "", name: "a" });
+    s = addRequest(s, pid, mid, { method: "GET", url: "https://b", headers: {}, body: "", name: "b" });
+    const ridA = s.projects[0].modules[0].requests[0].id;
+    s = reorderRequest(s, pid, mid, ridA, 1);
+    expect(s.projects[0].modules[0].requests.map((r) => r.name)).toEqual(["b", "a"]);
   });
 });

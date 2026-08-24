@@ -137,3 +137,34 @@ export function moveRequest(state, fromPid, fromMid, toPid, toMid, rid) {
     requests: [...m.requests, req],
   }));
 }
+
+/** 内部:在数组中把 id 对应元素按 dir(-1/1)与相邻元素交换,越界返回原数组 */
+function swapById(arr, id, dir) {
+  const i = arr.findIndex((x) => x.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= arr.length) return arr;
+  const next = [...arr];
+  [next[i], next[j]] = [next[j], next[i]];
+  return next;
+}
+
+/** 项目排序 */
+export function reorderProject(state, pid, dir) {
+  return { projects: swapById(state.projects, pid, dir) };
+}
+
+/** 模块排序 */
+export function reorderModule(state, pid, mid, dir) {
+  return mapProject(state, pid, (p) => ({
+    ...p,
+    modules: swapById(p.modules, mid, dir),
+  }));
+}
+
+/** 请求排序 */
+export function reorderRequest(state, pid, mid, rid, dir) {
+  return mapModule(state, pid, mid, (m) => ({
+    ...m,
+    requests: swapById(m.requests, rid, dir),
+  }));
+}
