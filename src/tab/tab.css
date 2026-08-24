@@ -10,13 +10,25 @@ body { margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-ser
 .toolbar button, .toolbar select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
 .toolbar .primary { background: #2563eb; color: #fff; border-color: #2563eb; }
 .app-version { margin-left: auto; font-size: 12px; color: #aaa; }
-.editor { flex: 1; overflow: auto; }
+.editor { flex: 1; overflow: auto; min-height: 60px; }
 .editor .cm-editor { height: 100%; }
-.history { max-height: 30%; overflow: auto; border-top: 1px solid #eee; padding: 8px; }
-.history-title { font-size: 12px; color: #888; margin-bottom: 4px; }
-#history-list { list-style: none; margin: 0; padding: 0; }
-#history-list li { font-size: 13px; padding: 4px 6px; cursor: pointer; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#history-list li:hover { background: #f2f6ff; }
+.history-resizer { height: 6px; cursor: row-resize; background: #eee; transition: background 0.15s; flex: 0 0 6px; }
+.history-resizer:hover, .history-resizer.dragging { background: #93c5fd; }
+.history { flex: 0 0 auto; height: 180px; overflow-y: auto; border-top: 1px solid #eee; padding: 8px; }
+.history-title { font-size: 12px; color: #888; margin-bottom: 6px; }
+#history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.hl-item { border: 1px solid #eee; border-radius: 6px; padding: 6px 8px; }
+.hl-item:hover { border-color: #c7d2fe; background: #fafbff; }
+.hl-row1 { display: flex; align-items: center; gap: 6px; }
+.hl-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; border: 1px solid transparent; border-radius: 4px; padding: 2px 4px; }
+.hl-name:hover { border-color: #ddd; }
+.hl-name:focus { border-color: #2563eb; outline: none; background: #fff; }
+.hl-btn { font-size: 11px; padding: 2px 7px; border: 1px solid #ccc; border-radius: 5px; background: #fff; cursor: pointer; white-space: nowrap; }
+.hl-btn.load { color: #2563eb; border-color: #93c5fd; }
+.hl-btn.del { color: #dc2626; border-color: #fca5a5; }
+.hl-url { font-size: 11px; color: #999; margin-top: 3px; font-family: ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hl-note { width: 100%; box-sizing: border-box; margin-top: 4px; font-size: 12px; border: 1px solid #eee; border-radius: 5px; padding: 4px 6px; resize: vertical; min-height: 28px; font-family: inherit; }
+.hl-empty { color: #bbb; font-size: 13px; padding: 12px 4px; }
 .status-bar { padding: 10px 12px; font-weight: 600; border-bottom: 1px solid #eee; }
 .status-bar.s2 { color: #16a34a; } .status-bar.s3 { color: #2563eb; }
 .status-bar.s4, .status-bar.s5 { color: #dc2626; }
@@ -77,3 +89,27 @@ body { margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-ser
 .hist-actions .load { color: #2563eb; border-color: #93c5fd; }
 .hist-actions .del { color: #dc2626; border-color: #fca5a5; }
 .hist-actions button:hover { filter: brightness(0.97); }
+
+/* 环境管理弹窗 */
+.env-body { flex: 1; display: flex; min-height: 0; }
+.env-sidebar { flex: 0 0 200px; border-right: 1px solid #eee; display: flex; flex-direction: column; }
+.env-list { list-style: none; margin: 0; padding: 8px; overflow: auto; flex: 1; }
+.env-list li { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+.env-list li:hover { background: #f3f4f6; }
+.env-list li.active { background: #eef2ff; color: #2563eb; font-weight: 600; }
+.env-list .env-del { border: none; background: none; color: #dc2626; cursor: pointer; font-size: 14px; visibility: hidden; }
+.env-list li:hover .env-del { visibility: visible; }
+.env-add { display: flex; gap: 6px; padding: 8px; border-top: 1px solid #eee; }
+.env-new-name { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+.env-add button { padding: 6px 10px; border: 1px solid #93c5fd; color: #2563eb; border-radius: 6px; background: #fff; cursor: pointer; white-space: nowrap; }
+.env-vars { flex: 1; padding: 14px 18px; overflow: auto; display: flex; flex-direction: column; }
+.env-vars-title { font-weight: 600; margin-bottom: 12px; }
+.env-var-table { width: 100%; border-collapse: collapse; }
+.env-var-table td { padding: 4px 4px; }
+.env-var-table input { width: 100%; box-sizing: border-box; padding: 5px 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+.env-var-table .env-var-del { border: none; background: none; color: #dc2626; cursor: pointer; font-size: 14px; }
+.env-var-add { display: flex; gap: 6px; margin-top: 10px; }
+.env-var-add input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+.env-var-add button { padding: 6px 10px; border: 1px solid #93c5fd; color: #2563eb; border-radius: 6px; background: #fff; cursor: pointer; white-space: nowrap; }
+.env-hint { margin-top: auto; padding-top: 14px; font-size: 12px; color: #999; }
+.env-hint code { background: #f3f4f6; padding: 1px 5px; border-radius: 4px; }

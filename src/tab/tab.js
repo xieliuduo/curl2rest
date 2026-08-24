@@ -3,6 +3,10 @@ import { parseRequest, toHttp, toCurl } from "../core/format.js";
 import { substitute } from "../core/variables.js";
 import { describeError } from "../core/errors.js";
 import { loadHistory, pushHistory, patchHistory, deleteHistory } from "../core/history.js";
+import {
+  loadEnvironments, saveEnvironments, addEnv, removeEnv,
+  setVar, removeVar, setCurrent, currentVars,
+} from "../core/environments.js";
 import { renderJsonTree } from "./json-tree.js";
 import { MSG } from "../shared/messages.js";
 
@@ -29,9 +33,14 @@ const errorCard = $("error-card");
 // 缓存最近一次响应,供复制按钮使用
 let lastResp = null;
 
-// 环境:v1 从 storage 读一个简单的键值 map(可为空)
-let envVars = {};
-chrome.storage.local.get("curl2rest_env").then((g) => { envVars = g.curl2rest_env || {}; });
+// ---- 环境状态 ----
+let envState = { current: "", envs: {} };
+let selectedEnv = ""; // 环境弹窗里当前正在编辑的环境(不一定等于生效环境)
+
+// 当前生效的变量 map(发送时用)
+function activeVars() {
+  return currentVars(envState);
+}
 
 // ---- 格式转换按钮 ----
 $("btn-to-curl").onclick = () => tryConvert((obj) => toCurl(obj));
@@ -54,7 +63,7 @@ async function send() {
   hideError();
   let req;
   try {
-    const raw = substitute(editor.getValue(), envVars);
+    const raw = substitute(editor.getValue(), activeVars());
     req = parseRequest(raw);
   } catch (e) {
     renderError(e.code, e.message);
@@ -156,18 +165,79 @@ function loadIntoEditor(item) {
   editor.setValue(toHttp(item));
 }
 
-// 左下角简单概览列表(显示自定义名称)
+// 左下角历史列表:可滚动,单条可改名/备注/回填/删除(数据与弹窗同源)
 function refreshHistory(list) {
   historyCache = list || [];
   const ul = $("history-list");
   ul.innerHTML = "";
-  historyCache.forEach((item) => {
+
+  if (!historyCache.length) {
     const li = document.createElement("li");
-    li.textContent = item.name || `${item.method} ${item.url}`;
-    li.title = `${item.method} ${item.url}`;
-    li.onclick = () => loadIntoEditor(item);
+    li.className = "hl-empty";
+    li.textContent = "暂无历史记录,发送请求后自动保存";
     ul.appendChild(li);
-  });
+    return;
+  }
+
+  historyCache.forEach((item) => ul.appendChild(renderHlItem(item)));
+}
+
+// 左下单条历史项
+function renderHlItem(item) {
+  const li = document.createElement("li");
+  li.className = "hl-item";
+
+  const row1 = document.createElement("div");
+  row1.className = "hl-row1";
+
+  const name = document.createElement("input");
+  name.className = "hl-name";
+  name.value = item.name || `${item.method} ${item.url}`;
+  name.title = "点击编辑名称";
+  name.onchange = async () => {
+    await patchHistory(item.id, { name: name.value.trim() || name.value });
+    historyCache = await loadHistory();
+    syncHistoryViews();
+  };
+
+  const loadBtn = document.createElement("button");
+  loadBtn.className = "hl-btn load";
+  loadBtn.textContent = "回填";
+  loadBtn.onclick = () => loadIntoEditor(item);
+
+  const delBtn = document.createElement("button");
+  delBtn.className = "hl-btn del";
+  delBtn.textContent = "删除";
+  delBtn.onclick = async () => {
+    await deleteHistory(item.id);
+    historyCache = await loadHistory();
+    syncHistoryViews();
+  };
+  row1.append(name, loadBtn, delBtn);
+
+  const url = document.createElement("div");
+  url.className = "hl-url";
+  url.textContent = `${item.method} ${item.url}`;
+
+  const note = document.createElement("textarea");
+  note.className = "hl-note";
+  note.placeholder = "填写备注…";
+  note.value = item.note || "";
+  note.onchange = async () => {
+    await patchHistory(item.id, { note: note.value });
+    historyCache = await loadHistory();
+    // 备注变更无需重渲染左下(避免打断输入),仅同步弹窗数据源
+    if (!modal.classList.contains("hidden")) renderHistoryPanel(searchInput.value);
+  };
+
+  li.append(row1, url, note);
+  return li;
+}
+
+// 历史数据变更后,同步刷新左下列表与(若打开的)弹窗
+function syncHistoryViews() {
+  refreshHistory(historyCache);
+  if (!modal.classList.contains("hidden")) renderHistoryPanel(searchInput.value);
 }
 
 // ---- 弹窗管理面板 ----
@@ -223,8 +293,9 @@ function renderHistItem(item) {
   name.value = item.name || `${item.method} ${item.url}`;
   name.title = "点击编辑名称";
   name.onchange = async () => {
-    historyCache = await patchHistory(item.id, { name: name.value.trim() || name.value });
-    refreshHistory(historyCache);
+    await patchHistory(item.id, { name: name.value.trim() || name.value });
+    historyCache = await loadHistory();
+    syncHistoryViews();
   };
 
   const actions = document.createElement("div");
@@ -237,9 +308,9 @@ function renderHistItem(item) {
   delBtn.className = "del";
   delBtn.textContent = "删除";
   delBtn.onclick = async () => {
-    historyCache = await deleteHistory(item.id);
-    refreshHistory(historyCache);
-    renderHistoryPanel(searchInput.value);
+    await deleteHistory(item.id);
+    historyCache = await loadHistory();
+    syncHistoryViews();
   };
   actions.append(loadBtn, delBtn);
   row1.append(name, actions);
@@ -253,15 +324,14 @@ function renderHistItem(item) {
   note.placeholder = "填写备注…";
   note.value = item.note || "";
   note.onchange = async () => {
-    historyCache = await patchHistory(item.id, { note: note.value });
+    await patchHistory(item.id, { note: note.value });
+    historyCache = await loadHistory();
     refreshHistory(historyCache);
   };
 
   li.append(row1, url, note);
   return li;
 }
-
-loadHistory().then(refreshHistory);
 
 // ---- 可拖拽分隔线:调整左右宽度,比例存 localStorage ----
 (() => {
@@ -293,3 +363,187 @@ loadHistory().then(refreshHistory);
     localStorage.setItem(KEY, parseFloat(left.style.flexBasis));
   });
 })();
+
+// ---- 历史面板高度可拖拽(存 localStorage) ----
+(() => {
+  const history = document.querySelector(".history");
+  const resizer = $("history-resizer");
+  const KEY = "curl2rest_history_h";
+
+  const saved = parseInt(localStorage.getItem(KEY), 10);
+  if (saved >= 60 && saved <= 600) history.style.height = saved + "px";
+
+  let dragging = false;
+  let startY = 0;
+  let startH = 0;
+  resizer.addEventListener("mousedown", (e) => {
+    dragging = true;
+    startY = e.clientY;
+    startH = history.getBoundingClientRect().height;
+    resizer.classList.add("dragging");
+    document.body.style.userSelect = "none";
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    // 向上拖变高、向下拖变矮
+    const h = startH + (startY - e.clientY);
+    if (h >= 60 && h <= 600) history.style.height = h + "px";
+  });
+  window.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false;
+    resizer.classList.remove("dragging");
+    document.body.style.userSelect = "";
+    localStorage.setItem(KEY, parseInt(history.style.height, 10));
+  });
+})();
+
+// ---- 环境:下拉切换 + 管理弹窗 ----
+const envSelect = $("env-select");
+const envModal = $("env-modal");
+
+// 渲染顶部下拉(列出所有环境,选中 = 当前生效环境)
+function refreshEnvSelect() {
+  envSelect.innerHTML = "";
+  const names = Object.keys(envState.envs);
+  if (!names.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "无环境";
+    envSelect.appendChild(opt);
+    envSelect.disabled = true;
+    return;
+  }
+  envSelect.disabled = false;
+  names.forEach((name) => {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    if (name === envState.current) opt.selected = true;
+    envSelect.appendChild(opt);
+  });
+}
+
+envSelect.onchange = async () => {
+  envState = setCurrent(envState, envSelect.value);
+  await saveEnvironments(envState);
+};
+
+// 打开/关闭环境弹窗
+$("btn-env").onclick = () => {
+  selectedEnv = envState.current || Object.keys(envState.envs)[0] || "";
+  renderEnvModal();
+  envModal.classList.remove("hidden");
+};
+$("env-close").onclick = () => envModal.classList.add("hidden");
+envModal.addEventListener("click", (e) => { if (e.target === envModal) envModal.classList.add("hidden"); });
+
+// 新增环境
+$("env-add-btn").onclick = async () => {
+  const input = $("env-new-name");
+  const name = input.value.trim();
+  if (!name) return;
+  envState = addEnv(envState, name);
+  input.value = "";
+  selectedEnv = name;
+  await saveEnvironments(envState);
+  refreshEnvSelect();
+  renderEnvModal();
+};
+
+// 添加变量到当前选中环境
+$("env-var-add-btn").onclick = async () => {
+  const keyEl = $("env-var-key");
+  const valEl = $("env-var-val");
+  const key = keyEl.value.trim();
+  if (!key || !selectedEnv) return;
+  envState = setVar(envState, selectedEnv, key, valEl.value);
+  keyEl.value = "";
+  valEl.value = "";
+  await saveEnvironments(envState);
+  renderEnvModal();
+};
+
+// 渲染环境弹窗:左侧环境列表 + 右侧变量表
+function renderEnvModal() {
+  // 左侧环境列表
+  const ul = $("env-list");
+  ul.innerHTML = "";
+  const names = Object.keys(envState.envs);
+  names.forEach((name) => {
+    const li = document.createElement("li");
+    if (name === selectedEnv) li.className = "active";
+    const label = document.createElement("span");
+    label.textContent = name + (name === envState.current ? " ✓" : "");
+    label.onclick = () => { selectedEnv = name; renderEnvModal(); };
+    label.style.flex = "1";
+    const del = document.createElement("button");
+    del.className = "env-del";
+    del.textContent = "✕";
+    del.title = "删除环境";
+    del.onclick = async (e) => {
+      e.stopPropagation();
+      envState = removeEnv(envState, name);
+      if (selectedEnv === name) selectedEnv = envState.current || Object.keys(envState.envs)[0] || "";
+      await saveEnvironments(envState);
+      refreshEnvSelect();
+      renderEnvModal();
+    };
+    li.append(label, del);
+    ul.appendChild(li);
+  });
+
+  // 右侧变量编辑区
+  const title = $("env-vars-title");
+  const rows = $("env-var-rows");
+  const addBox = $("env-var-add");
+  rows.innerHTML = "";
+
+  if (!selectedEnv) {
+    title.textContent = names.length ? "请选择一个环境" : "请先新增一个环境";
+    addBox.classList.add("hidden");
+    return;
+  }
+  title.textContent = `环境「${selectedEnv}」的变量`;
+  addBox.classList.remove("hidden");
+
+  const vars = envState.envs[selectedEnv] || {};
+  Object.entries(vars).forEach(([key, value]) => {
+    const tr = document.createElement("tr");
+
+    const tdKey = document.createElement("td");
+    const keyInput = document.createElement("input");
+    keyInput.value = key;
+    keyInput.readOnly = true; // 键名不就地改(改名=删+加),避免中途状态混乱
+    keyInput.title = key;
+    tdKey.appendChild(keyInput);
+
+    const tdVal = document.createElement("td");
+    const valInput = document.createElement("input");
+    valInput.value = value;
+    valInput.onchange = async () => {
+      envState = setVar(envState, selectedEnv, key, valInput.value);
+      await saveEnvironments(envState);
+    };
+    tdVal.appendChild(valInput);
+
+    const tdDel = document.createElement("td");
+    const del = document.createElement("button");
+    del.className = "env-var-del";
+    del.textContent = "✕";
+    del.title = "删除变量";
+    del.onclick = async () => {
+      envState = removeVar(envState, selectedEnv, key);
+      await saveEnvironments(envState);
+      renderEnvModal();
+    };
+    tdDel.appendChild(del);
+
+    tr.append(tdKey, tdVal, tdDel);
+    rows.appendChild(tr);
+  });
+}
+
+// ---- 初始化 ----
+loadHistory().then(refreshHistory);
+loadEnvironments().then((s) => { envState = s; refreshEnvSelect(); });
