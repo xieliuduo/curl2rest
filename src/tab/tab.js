@@ -2,7 +2,7 @@ import { createEditor } from "./editor.js";
 import { parseRequest, toHttp, toCurl } from "../core/format.js";
 import { substitute } from "../core/variables.js";
 import { describeError } from "../core/errors.js";
-import { loadHistory, pushHistory } from "../core/history.js";
+import { loadHistory, pushHistory, patchHistory, deleteHistory } from "../core/history.js";
 import { renderJsonTree } from "./json-tree.js";
 import { MSG } from "../shared/messages.js";
 
@@ -68,7 +68,8 @@ async function send() {
     return;
   }
   renderResponse(resp);
-  await refreshHistory(await pushHistory({ ...req, at: Date.now() }));
+  historyCache = await pushHistory(req);
+  refreshHistory(historyCache);
 }
 
 // ---- 渲染响应 ----
@@ -144,17 +145,119 @@ $("btn-copy-headers").onclick = (e) => {
   copyText(text, e.target);
 };
 
-// ---- 历史记录 ----
-async function refreshHistory(list) {
+// ---- 历史记录:左下概览列表 + 弹窗管理面板 ----
+let historyCache = [];
+
+// 把某条历史回填到编辑器(优先按原格式,退回 HTTP 报文)
+function loadIntoEditor(item) {
+  editor.setValue(toHttp(item));
+}
+
+// 左下角简单概览列表(显示自定义名称)
+function refreshHistory(list) {
+  historyCache = list || [];
   const ul = $("history-list");
   ul.innerHTML = "";
-  (list || []).forEach((item) => {
+  historyCache.forEach((item) => {
     const li = document.createElement("li");
-    li.textContent = `${item.method} ${item.url}`;
-    li.onclick = () => editor.setValue(toHttp(item));
+    li.textContent = item.name || `${item.method} ${item.url}`;
+    li.title = `${item.method} ${item.url}`;
+    li.onclick = () => loadIntoEditor(item);
     ul.appendChild(li);
   });
 }
+
+// ---- 弹窗管理面板 ----
+const modal = $("history-modal");
+const searchInput = $("history-search");
+
+function openHistoryModal() {
+  renderHistoryPanel(searchInput.value);
+  modal.classList.remove("hidden");
+}
+function closeHistoryModal() { modal.classList.add("hidden"); }
+
+$("btn-history").onclick = openHistoryModal;
+$("history-close").onclick = closeHistoryModal;
+modal.addEventListener("click", (e) => { if (e.target === modal) closeHistoryModal(); });
+searchInput.oninput = () => renderHistoryPanel(searchInput.value);
+
+// 渲染弹窗内的完整可管理列表
+function renderHistoryPanel(keyword = "") {
+  const ul = $("history-panel-list");
+  ul.innerHTML = "";
+  const kw = keyword.trim().toLowerCase();
+  const list = historyCache.filter((item) => {
+    if (!kw) return true;
+    return (
+      (item.name || "").toLowerCase().includes(kw) ||
+      (item.url || "").toLowerCase().includes(kw) ||
+      (item.note || "").toLowerCase().includes(kw)
+    );
+  });
+
+  if (!list.length) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = kw ? "没有匹配的历史记录" : "暂无历史记录";
+    ul.appendChild(li);
+    return;
+  }
+
+  list.forEach((item) => ul.appendChild(renderHistItem(item)));
+}
+
+// 单条历史项:可改名(失焦保存)、写备注(失焦保存)、回填、删除
+function renderHistItem(item) {
+  const li = document.createElement("li");
+  li.className = "hist-item";
+
+  const row1 = document.createElement("div");
+  row1.className = "hist-row1";
+
+  const name = document.createElement("input");
+  name.className = "hist-name";
+  name.value = item.name || `${item.method} ${item.url}`;
+  name.title = "点击编辑名称";
+  name.onchange = async () => {
+    historyCache = await patchHistory(item.id, { name: name.value.trim() || name.value });
+    refreshHistory(historyCache);
+  };
+
+  const actions = document.createElement("div");
+  actions.className = "hist-actions";
+  const loadBtn = document.createElement("button");
+  loadBtn.className = "load";
+  loadBtn.textContent = "回填";
+  loadBtn.onclick = () => { loadIntoEditor(item); closeHistoryModal(); };
+  const delBtn = document.createElement("button");
+  delBtn.className = "del";
+  delBtn.textContent = "删除";
+  delBtn.onclick = async () => {
+    historyCache = await deleteHistory(item.id);
+    refreshHistory(historyCache);
+    renderHistoryPanel(searchInput.value);
+  };
+  actions.append(loadBtn, delBtn);
+  row1.append(name, actions);
+
+  const url = document.createElement("div");
+  url.className = "hist-url";
+  url.textContent = `${item.method} ${item.url}`;
+
+  const note = document.createElement("textarea");
+  note.className = "hist-note";
+  note.placeholder = "填写备注…";
+  note.value = item.note || "";
+  note.onchange = async () => {
+    historyCache = await patchHistory(item.id, { note: note.value });
+    refreshHistory(historyCache);
+  };
+
+  li.append(row1, url, note);
+  return li;
+}
+
 loadHistory().then(refreshHistory);
 
 // ---- 可拖拽分隔线:调整左右宽度,比例存 localStorage ----
