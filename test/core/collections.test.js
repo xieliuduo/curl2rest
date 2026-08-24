@@ -1,8 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   emptyState, addProject, renameProject, removeProject,
-} from "../../src/core/collections.js";
-import {
   addModule, renameModule, removeModule,
 } from "../../src/core/collections.js";
 
