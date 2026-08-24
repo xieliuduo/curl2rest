@@ -213,6 +213,12 @@ function renderHlItem(item) {
   loadBtn.textContent = "回填";
   loadBtn.onclick = () => loadIntoEditor(item);
 
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "hl-btn load";
+  saveBtn.textContent = "另存";
+  saveBtn.title = "另存到请求库";
+  saveBtn.onclick = () => openSaveModal(item);
+
   const delBtn = document.createElement("button");
   delBtn.className = "hl-btn del";
   delBtn.textContent = "删除";
@@ -221,7 +227,7 @@ function renderHlItem(item) {
     historyCache = await loadHistory();
     syncHistoryViews();
   };
-  row1.append(name, loadBtn, delBtn);
+  row1.append(name, loadBtn, saveBtn, delBtn);
 
   const url = document.createElement("div");
   url.className = "hl-url";
@@ -312,6 +318,11 @@ function renderHistItem(item) {
   loadBtn.className = "load";
   loadBtn.textContent = "回填";
   loadBtn.onclick = () => { loadIntoEditor(item); closeHistoryModal(); };
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "load";
+  saveBtn.textContent = "另存";
+  saveBtn.title = "另存到请求库";
+  saveBtn.onclick = () => { openSaveModal(item); };
   const delBtn = document.createElement("button");
   delBtn.className = "del";
   delBtn.textContent = "删除";
@@ -320,7 +331,7 @@ function renderHistItem(item) {
     historyCache = await loadHistory();
     syncHistoryViews();
   };
-  actions.append(loadBtn, delBtn);
+  actions.append(loadBtn, saveBtn, delBtn);
   row1.append(name, actions);
 
   const url = document.createElement("div");
@@ -630,6 +641,8 @@ function renderProject(p) {
       { icon: "🗑", title: "删除项目", danger: true, fn: async () => {
           const cnt = p.modules.reduce((s, m) => s + m.requests.length, 0);
           if (!confirm(`删除项目「${p.name}」? 将连同 ${p.modules.length} 个模块、${cnt} 个请求一起删除。`)) return;
+          expanded.delete(p.id);
+          p.modules.forEach((mm) => expanded.delete(mm.id));
           colState = removeProject(colState, p.id); await saveCol(); refreshTree();
         } },
     ]);
@@ -659,6 +672,7 @@ function renderModule(p, m) {
       { icon: "↓", title: "下移", fn: async () => { colState = reorderModule(colState, p.id, m.id, 1); await saveCol(); refreshTree(); } },
       { icon: "🗑", title: "删除模块", danger: true, fn: async () => {
           if (!confirm(`删除模块「${m.name}」? 将连同 ${m.requests.length} 个请求一起删除。`)) return;
+          expanded.delete(m.id);
           colState = removeModule(colState, p.id, m.id); await saveCol(); refreshTree();
         } },
     ]);
@@ -673,6 +687,27 @@ function renderModule(p, m) {
   return node;
 }
 
+// 移动请求到其他模块(编号选择,最简实现)
+async function moveRequestFlow(p, m, r) {
+  const targets = [];
+  colState.projects.forEach((tp) => {
+    tp.modules.forEach((tm) => {
+      targets.push({ pid: tp.id, mid: tm.id, label: `${tp.name} / ${tm.name}` });
+    });
+  });
+  if (targets.length <= 1) { alert("没有其他模块可移动,请先新建模块。"); return; }
+  const menu = targets.map((t, i) => `${i + 1}. ${t.label}`).join("\n");
+  const ans = prompt(`把「${r.name}」移动到哪个模块? 输入编号:\n${menu}`);
+  if (ans === null) return;
+  const idx = parseInt(ans, 10) - 1;
+  if (!(idx >= 0 && idx < targets.length)) { alert("编号无效。"); return; }
+  const t = targets[idx];
+  if (t.pid === p.id && t.mid === m.id) return; // 原地不动
+  colState = moveRequest(colState, p.id, m.id, t.pid, t.mid, r.id);
+  expanded.add(t.pid); expanded.add(t.mid);
+  await saveCol(); refreshTree();
+}
+
 function renderRequest(p, m, r) {
   const node = document.createElement("div");
   node.className = "ct-node";
@@ -682,6 +717,7 @@ function renderRequest(p, m, r) {
     [
       { icon: "▶", title: "回填到编辑器", fn: open },
       { icon: "✎", title: "编辑备注", fn: () => toggleNote(node, p, m, r) },
+      { icon: "⇄", title: "移动到其他模块", fn: () => moveRequestFlow(p, m, r) },
       { icon: "↑", title: "上移", fn: async () => { colState = reorderRequest(colState, p.id, m.id, r.id, -1); await saveCol(); refreshTree(); } },
       { icon: "↓", title: "下移", fn: async () => { colState = reorderRequest(colState, p.id, m.id, r.id, 1); await saveCol(); refreshTree(); } },
       { icon: "🗑", title: "删除请求", danger: true, fn: async () => {
@@ -756,6 +792,93 @@ $("import-file").onchange = async (e) => {
   } finally {
     e.target.value = ""; // 允许重复导入同一文件
   }
+};
+
+// ==== 「保存到」弹窗:入口 1(编辑器)/入口 2(历史)共用 ====
+const saveModal = $("save-modal");
+let pendingReq = null; // 待保存的请求对象
+
+// 打开弹窗,预填名称;req 为已解析的请求对象
+function openSaveModal(req) {
+  pendingReq = req;
+  $("save-name").value = req.name || `${req.method} ${req.url}`;
+  refreshSaveSelects();
+  saveModal.classList.remove("hidden");
+}
+function closeSaveModal() { saveModal.classList.add("hidden"); pendingReq = null; }
+
+// 刷新项目/模块下拉(模块随项目联动)
+function refreshSaveSelects() {
+  const projSel = $("save-project");
+  projSel.innerHTML = "";
+  colState.projects.forEach((p) => {
+    const opt = document.createElement("option");
+    opt.value = p.id; opt.textContent = p.name;
+    projSel.appendChild(opt);
+  });
+  refreshSaveModuleSelect();
+}
+function refreshSaveModuleSelect() {
+  const projSel = $("save-project");
+  const modSel = $("save-module");
+  modSel.innerHTML = "";
+  const p = colState.projects.find((x) => x.id === projSel.value);
+  (p ? p.modules : []).forEach((m) => {
+    const opt = document.createElement("option");
+    opt.value = m.id; opt.textContent = m.name;
+    modSel.appendChild(opt);
+  });
+}
+$("save-project").onchange = refreshSaveModuleSelect;
+
+// 弹窗内「+ 新建项目 / + 新建模块」
+$("save-new-project").onclick = async () => {
+  const name = prompt("新项目名称"); if (!name) return;
+  colState = addProject(colState, name);
+  await saveCol(); refreshTree(); refreshSaveSelects();
+  const created = colState.projects[colState.projects.length - 1];
+  $("save-project").value = created.id;
+  refreshSaveModuleSelect();
+};
+$("save-new-module").onclick = async () => {
+  const pid = $("save-project").value;
+  if (!pid) { alert("请先新建/选择一个项目。"); return; }
+  const name = prompt("新模块名称"); if (!name) return;
+  colState = addModule(colState, pid, name);
+  await saveCol(); refreshTree(); refreshSaveModuleSelect();
+  const p = colState.projects.find((x) => x.id === pid);
+  const created = p.modules[p.modules.length - 1];
+  $("save-module").value = created.id;
+};
+
+// 确认保存
+$("save-confirm").onclick = async () => {
+  const pid = $("save-project").value;
+  const mid = $("save-module").value;
+  if (!pid || !mid) { alert("请选择项目和模块(可用「+ 新建」创建)。"); return; }
+  const name = $("save-name").value.trim();
+  // 空名不传 name 键,让 core 回退到默认 `${method} ${url}`
+  const req = { ...pendingReq };
+  if (name) req.name = name; else delete req.name;
+  colState = addRequest(colState, pid, mid, req);
+  expanded.add(pid); expanded.add(mid);
+  await saveCol(); refreshTree();
+  closeSaveModal();
+};
+
+$("save-close").onclick = closeSaveModal;
+saveModal.addEventListener("click", (e) => { if (e.target === saveModal) closeSaveModal(); });
+
+// 入口 1:工具栏「保存到库」—— 解析当前编辑器内容后打开弹窗
+$("btn-save-collection").onclick = () => {
+  let req;
+  try {
+    req = parseRequest(substitute(editor.getValue(), activeVars()));
+  } catch (e) {
+    renderError(e.code, e.message);
+    return;
+  }
+  openSaveModal(req);
 };
 
 // ---- 初始化 ----
