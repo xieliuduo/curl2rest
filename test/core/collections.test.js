@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   emptyState, addProject, renameProject, removeProject,
 } from "../../src/core/collections.js";
+import {
+  addModule, renameModule, removeModule,
+} from "../../src/core/collections.js";
 
 describe("emptyState", () => {
   it("初始为空:projects 为空数组", () => {
@@ -51,5 +54,48 @@ describe("removeProject", () => {
     const pid = s.projects[0].id;
     s = removeProject(s, pid);
     expect(s.projects.map((p) => p.name)).toEqual(["b"]);
+  });
+});
+
+describe("addModule", () => {
+  it("在指定项目下新增模块", () => {
+    let s = addProject(emptyState(), "p");
+    const pid = s.projects[0].id;
+    s = addModule(s, pid, "订单");
+    expect(s.projects[0].modules).toHaveLength(1);
+    expect(s.projects[0].modules[0].name).toBe("订单");
+    expect(s.projects[0].modules[0].requests).toEqual([]);
+  });
+  it("项目不存在时原样返回", () => {
+    const s = addProject(emptyState(), "p");
+    expect(addModule(s, "nope", "m")).toEqual(s);
+  });
+  it("空名忽略", () => {
+    let s = addProject(emptyState(), "p");
+    const pid = s.projects[0].id;
+    s = addModule(s, pid, "  ");
+    expect(s.projects[0].modules).toHaveLength(0);
+  });
+});
+
+describe("renameModule", () => {
+  it("按 id 给模块改名", () => {
+    let s = addProject(emptyState(), "p");
+    const pid = s.projects[0].id;
+    s = addModule(s, pid, "旧");
+    const mid = s.projects[0].modules[0].id;
+    s = renameModule(s, pid, mid, "新");
+    expect(s.projects[0].modules[0].name).toBe("新");
+  });
+});
+
+describe("removeModule", () => {
+  it("按 id 删除模块", () => {
+    let s = addProject(emptyState(), "p");
+    const pid = s.projects[0].id;
+    s = addModule(addModule(s, pid, "a"), pid, "b");
+    const mid = s.projects[0].modules[0].id;
+    s = removeModule(s, pid, mid);
+    expect(s.projects[0].modules.map((m) => m.name)).toEqual(["b"]);
   });
 });
