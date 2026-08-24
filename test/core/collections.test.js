@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   emptyState, addProject, renameProject, removeProject,
   addModule, renameModule, removeModule,
+  addRequest, renameRequest, updateRequestNote, removeRequest,
 } from "../../src/core/collections.js";
 
 describe("emptyState", () => {
@@ -95,5 +96,65 @@ describe("removeModule", () => {
     const mid = s.projects[0].modules[0].id;
     s = removeModule(s, pid, mid);
     expect(s.projects[0].modules.map((m) => m.name)).toEqual(["b"]);
+  });
+});
+
+// 便捷构造:返回 {state, pid, mid}
+function withModule() {
+  let s = addProject(emptyState(), "p");
+  const pid = s.projects[0].id;
+  s = addModule(s, pid, "m");
+  const mid = s.projects[0].modules[0].id;
+  return { s, pid, mid };
+}
+const REQ = { method: "GET", url: "https://x.com", headers: {}, body: "" };
+
+describe("addRequest", () => {
+  it("在模块下新增请求,补 id / 默认 name / 空 note", () => {
+    const { s, pid, mid } = withModule();
+    const s2 = addRequest(s, pid, mid, REQ);
+    const r = s2.projects[0].modules[0].requests[0];
+    expect(r.method).toBe("GET");
+    expect(r.url).toBe("https://x.com");
+    expect(r.name).toBe("GET https://x.com");
+    expect(r.note).toBe("");
+    expect(typeof r.id).toBe("string");
+  });
+  it("传入的 name 优先于默认名", () => {
+    const { s, pid, mid } = withModule();
+    const s2 = addRequest(s, pid, mid, { ...REQ, name: "查询用户" });
+    expect(s2.projects[0].modules[0].requests[0].name).toBe("查询用户");
+  });
+  it("模块不存在时原样返回", () => {
+    const { s, pid } = withModule();
+    expect(addRequest(s, pid, "nope", REQ)).toEqual(s);
+  });
+});
+
+describe("renameRequest / updateRequestNote", () => {
+  it("改名", () => {
+    let { s, pid, mid } = withModule();
+    s = addRequest(s, pid, mid, REQ);
+    const rid = s.projects[0].modules[0].requests[0].id;
+    s = renameRequest(s, pid, mid, rid, "新名");
+    expect(s.projects[0].modules[0].requests[0].name).toBe("新名");
+  });
+  it("写备注", () => {
+    let { s, pid, mid } = withModule();
+    s = addRequest(s, pid, mid, REQ);
+    const rid = s.projects[0].modules[0].requests[0].id;
+    s = updateRequestNote(s, pid, mid, rid, "这是登录接口");
+    expect(s.projects[0].modules[0].requests[0].note).toBe("这是登录接口");
+  });
+});
+
+describe("removeRequest", () => {
+  it("按 id 删除请求", () => {
+    let { s, pid, mid } = withModule();
+    s = addRequest(s, pid, mid, { ...REQ, name: "a" });
+    s = addRequest(s, pid, mid, { ...REQ, name: "b" });
+    const rid = s.projects[0].modules[0].requests[0].id;
+    s = removeRequest(s, pid, mid, rid);
+    expect(s.projects[0].modules[0].requests.map((r) => r.name)).toEqual(["b"]);
   });
 });

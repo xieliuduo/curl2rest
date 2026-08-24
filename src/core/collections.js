@@ -72,3 +72,50 @@ export function removeModule(state, pid, mid) {
     modules: p.modules.filter((m) => m.id !== mid),
   }));
 }
+
+/** 内部:对指定项目下的指定模块应用变换 fn(module) → newModule */
+function mapModule(state, pid, mid, fn) {
+  return mapProject(state, pid, (p) => ({
+    ...p,
+    modules: p.modules.map((m) => (m.id === mid ? fn(m) : m)),
+  }));
+}
+
+/** 在模块下新增请求;自动补 id、默认名(METHOD URL)、空 note */
+export function addRequest(state, pid, mid, req) {
+  return mapModule(state, pid, mid, (m) => {
+    const entry = {
+      id: genId(),
+      name: `${req.method} ${req.url}`,
+      note: "",
+      ...req,
+    };
+    return { ...m, requests: [...m.requests, entry] };
+  });
+}
+
+/** 请求改名 */
+export function renameRequest(state, pid, mid, rid, name) {
+  const n = (name || "").trim();
+  if (!n) return state;
+  return mapModule(state, pid, mid, (m) => ({
+    ...m,
+    requests: m.requests.map((r) => (r.id === rid ? { ...r, name: n } : r)),
+  }));
+}
+
+/** 请求写备注 */
+export function updateRequestNote(state, pid, mid, rid, note) {
+  return mapModule(state, pid, mid, (m) => ({
+    ...m,
+    requests: m.requests.map((r) => (r.id === rid ? { ...r, note } : r)),
+  }));
+}
+
+/** 删除请求 */
+export function removeRequest(state, pid, mid, rid) {
+  return mapModule(state, pid, mid, (m) => ({
+    ...m,
+    requests: m.requests.filter((r) => r.id !== rid),
+  }));
+}
