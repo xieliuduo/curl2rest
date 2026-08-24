@@ -9,6 +9,14 @@ import {
 } from "../core/environments.js";
 import { renderJsonTree } from "./json-tree.js";
 import { MSG } from "../shared/messages.js";
+import {
+  loadCollections, saveCollections,
+  addProject, renameProject, removeProject,
+  addModule, renameModule, removeModule,
+  addRequest, renameRequest, updateRequestNote, removeRequest,
+  moveRequest, reorderProject, reorderModule, reorderRequest,
+  exportState, importState,
+} from "../core/collections.js";
 
 const SAMPLE = [
   "POST https://httpbin.org/post HTTP/1.1",
@@ -544,6 +552,213 @@ function renderEnvModal() {
   });
 }
 
+// ==== 请求库(项目 → 模块 → 请求)====
+let colState = { projects: [] };
+// 记录展开状态(id 集合),避免重渲染后全部折叠
+const expanded = new Set();
+
+async function saveCol() {
+  await saveCollections(colState);
+}
+
+// 渲染整棵树
+function refreshTree() {
+  const box = $("collection-tree");
+  box.innerHTML = "";
+  if (!colState.projects.length) {
+    const div = document.createElement("div");
+    div.className = "ct-empty";
+    div.textContent = "还没有项目,点上方「+ 项目」开始整理。";
+    box.appendChild(div);
+    return;
+  }
+  colState.projects.forEach((p) => box.appendChild(renderProject(p)));
+}
+
+// 通用:构造一行(toggle + 就地改名 label + 操作按钮)
+function makeRow(kind, id, name, onRename, actions, onOpen) {
+  const row = document.createElement("div");
+  row.className = "ct-row ct-" + kind;
+
+  const toggle = document.createElement("span");
+  toggle.className = "ct-toggle";
+  if (kind === "req") {
+    toggle.textContent = "";
+  } else {
+    toggle.textContent = expanded.has(id) ? "▾" : "▸";
+    toggle.onclick = () => {
+      if (expanded.has(id)) expanded.delete(id);
+      else expanded.add(id);
+      refreshTree();
+    };
+  }
+
+  const label = document.createElement("input");
+  label.className = "ct-label";
+  label.value = name;
+  label.title = name;
+  label.onchange = () => onRename(label.value);
+  if (onOpen) label.ondblclick = onOpen; // 请求:双击回填(单击可编辑名)
+
+  const act = document.createElement("span");
+  act.className = "ct-actions";
+  actions.forEach((a) => {
+    const b = document.createElement("button");
+    b.textContent = a.icon;
+    b.title = a.title;
+    if (a.danger) b.className = "ct-del";
+    b.onclick = (e) => { e.stopPropagation(); a.fn(); };
+    act.appendChild(b);
+  });
+
+  row.append(toggle, label, act);
+  return row;
+}
+
+function renderProject(p) {
+  const node = document.createElement("div");
+  node.className = "ct-node";
+  const row = makeRow("proj", p.id, p.name,
+    async (name) => { colState = renameProject(colState, p.id, name); await saveCol(); },
+    [
+      { icon: "＋", title: "新建模块", fn: async () => {
+          const name = prompt("模块名称"); if (!name) return;
+          colState = addModule(colState, p.id, name); expanded.add(p.id); await saveCol(); refreshTree();
+        } },
+      { icon: "↑", title: "上移", fn: async () => { colState = reorderProject(colState, p.id, -1); await saveCol(); refreshTree(); } },
+      { icon: "↓", title: "下移", fn: async () => { colState = reorderProject(colState, p.id, 1); await saveCol(); refreshTree(); } },
+      { icon: "🗑", title: "删除项目", danger: true, fn: async () => {
+          const cnt = p.modules.reduce((s, m) => s + m.requests.length, 0);
+          if (!confirm(`删除项目「${p.name}」? 将连同 ${p.modules.length} 个模块、${cnt} 个请求一起删除。`)) return;
+          colState = removeProject(colState, p.id); await saveCol(); refreshTree();
+        } },
+    ]);
+  node.appendChild(row);
+
+  if (expanded.has(p.id)) {
+    const children = document.createElement("div");
+    children.className = "ct-children";
+    p.modules.forEach((m) => children.appendChild(renderModule(p, m)));
+    node.appendChild(children);
+  }
+  return node;
+}
+
+function renderModule(p, m) {
+  const node = document.createElement("div");
+  node.className = "ct-node";
+  const row = makeRow("mod", m.id, m.name,
+    async (name) => { colState = renameModule(colState, p.id, m.id, name); await saveCol(); },
+    [
+      { icon: "＋", title: "新建请求", fn: async () => {
+          const req = { method: "GET", url: "https://", headers: {}, body: "", name: "新请求" };
+          colState = addRequest(colState, p.id, m.id, req); expanded.add(m.id); await saveCol(); refreshTree();
+          editor.setValue(toHttp(req));
+        } },
+      { icon: "↑", title: "上移", fn: async () => { colState = reorderModule(colState, p.id, m.id, -1); await saveCol(); refreshTree(); } },
+      { icon: "↓", title: "下移", fn: async () => { colState = reorderModule(colState, p.id, m.id, 1); await saveCol(); refreshTree(); } },
+      { icon: "🗑", title: "删除模块", danger: true, fn: async () => {
+          if (!confirm(`删除模块「${m.name}」? 将连同 ${m.requests.length} 个请求一起删除。`)) return;
+          colState = removeModule(colState, p.id, m.id); await saveCol(); refreshTree();
+        } },
+    ]);
+  node.appendChild(row);
+
+  if (expanded.has(m.id)) {
+    const children = document.createElement("div");
+    children.className = "ct-children";
+    m.requests.forEach((r) => children.appendChild(renderRequest(p, m, r)));
+    node.appendChild(children);
+  }
+  return node;
+}
+
+function renderRequest(p, m, r) {
+  const node = document.createElement("div");
+  node.className = "ct-node";
+  const open = () => loadIntoEditor(r);
+  const row = makeRow("req", r.id, r.name,
+    async (name) => { colState = renameRequest(colState, p.id, m.id, r.id, name); await saveCol(); },
+    [
+      { icon: "▶", title: "回填到编辑器", fn: open },
+      { icon: "✎", title: "编辑备注", fn: () => toggleNote(node, p, m, r) },
+      { icon: "↑", title: "上移", fn: async () => { colState = reorderRequest(colState, p.id, m.id, r.id, -1); await saveCol(); refreshTree(); } },
+      { icon: "↓", title: "下移", fn: async () => { colState = reorderRequest(colState, p.id, m.id, r.id, 1); await saveCol(); refreshTree(); } },
+      { icon: "🗑", title: "删除请求", danger: true, fn: async () => {
+          colState = removeRequest(colState, p.id, m.id, r.id); await saveCol(); refreshTree();
+        } },
+    ], open);
+  node.appendChild(row);
+  return node;
+}
+
+// 展开/收起某请求的备注编辑框
+function toggleNote(node, p, m, r) {
+  const exist = node.querySelector(".ct-req-note");
+  if (exist) { exist.remove(); return; }
+  const ta = document.createElement("textarea");
+  ta.className = "ct-req-note";
+  ta.placeholder = "填写备注…";
+  ta.value = r.note || "";
+  ta.onchange = async () => {
+    colState = updateRequestNote(colState, p.id, m.id, r.id, ta.value);
+    r.note = ta.value; // 同步本地引用,避免下次打开丢失
+    await saveCol();
+  };
+  node.appendChild(ta);
+  ta.focus();
+}
+
+// 折叠侧边栏(状态存 localStorage)
+(() => {
+  const layout = document.querySelector(".layout");
+  const KEY = "curl2rest_sidebar";
+  if (localStorage.getItem(KEY) === "1") layout.classList.add("sidebar-collapsed");
+  $("sidebar-toggle").onclick = () => {
+    layout.classList.toggle("sidebar-collapsed");
+    localStorage.setItem(KEY, layout.classList.contains("sidebar-collapsed") ? "1" : "0");
+  };
+})();
+
+// 新建项目
+$("btn-add-project").onclick = async () => {
+  const name = prompt("项目名称");
+  if (!name) return;
+  colState = addProject(colState, name);
+  await saveCol();
+  refreshTree();
+};
+
+// 导出 JSON(下载文件)
+$("btn-export").onclick = () => {
+  const blob = new Blob([JSON.stringify(exportState(colState), null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "curl2rest-collections.json";
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+// 导入 JSON(选文件 → 询问模式 → 合并/替换)
+$("btn-import").onclick = () => $("import-file").click();
+$("import-file").onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const incoming = JSON.parse(await file.text());
+    const merge = confirm("确定=合并到现有请求库;取消=整体替换现有请求库。");
+    colState = importState(colState, incoming, merge ? "merge" : "replace");
+    await saveCol();
+    refreshTree();
+  } catch {
+    alert("导入失败:文件不是合法的 JSON。");
+  } finally {
+    e.target.value = ""; // 允许重复导入同一文件
+  }
+};
+
 // ---- 初始化 ----
 loadHistory().then(refreshHistory);
 loadEnvironments().then((s) => { envState = s; refreshEnvSelect(); });
+loadCollections().then((s) => { colState = s; refreshTree(); });
