@@ -1,5 +1,36 @@
 <!doctype html>
 <html lang="zh">
-  <head><meta charset="utf-8" /><title>curl2rest</title></head>
-  <body><div id="app">loading...</div><script type="module" src="./tab.js"></script></body>
+  <head>
+    <meta charset="utf-8" />
+    <title>curl2rest</title>
+    <link rel="stylesheet" href="./tab.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <section class="left">
+        <div class="toolbar">
+          <select id="env-select" title="环境"></select>
+          <button id="btn-to-curl">转为 curl</button>
+          <button id="btn-to-http">转为 HTTP 格式</button>
+          <button id="btn-send" class="primary">发送 ▶</button>
+        </div>
+        <div id="editor" class="editor"></div>
+        <div class="history">
+          <div class="history-title">历史记录</div>
+          <ul id="history-list"></ul>
+        </div>
+      </section>
+      <section class="right">
+        <div id="status-bar" class="status-bar"></div>
+        <div class="tabs">
+          <button class="tab active" data-tab="body">Body</button>
+          <button class="tab" data-tab="headers">Headers</button>
+        </div>
+        <pre id="panel-body" class="panel"></pre>
+        <pre id="panel-headers" class="panel hidden"></pre>
+        <div id="error-card" class="error-card hidden"></div>
+      </section>
+    </div>
+    <script type="module" src="./tab.js"></script>
+  </body>
 </html>
