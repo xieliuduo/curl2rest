@@ -85,10 +85,10 @@ function mapModule(state, pid, mid, fn) {
 export function addRequest(state, pid, mid, req) {
   return mapModule(state, pid, mid, (m) => {
     const entry = {
-      id: genId(),
       name: `${req.method} ${req.url}`,
       note: "",
-      ...req,
+      ...req,          // req 可覆盖 name/note,但不能覆盖 id
+      id: genId(),     // id 始终最后生成,确保唯一
     };
     return { ...m, requests: [...m.requests, entry] };
   });

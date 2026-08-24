@@ -131,6 +131,17 @@ describe("addRequest", () => {
     const { s, pid } = withModule();
     expect(addRequest(s, pid, "nope", REQ)).toEqual(s);
   });
+  it("忽略传入的 id,始终生成新 id(防历史另存 id 冲突)", () => {
+    const { s, pid, mid } = withModule();
+    const source = { id: "history-123", at: 999, method: "GET", url: "https://x.com", headers: {}, body: "" };
+    let s2 = addRequest(s, pid, mid, source);
+    s2 = addRequest(s2, pid, mid, source); // 同一来源存两次
+    const reqs = s2.projects[0].modules[0].requests;
+    expect(reqs).toHaveLength(2);
+    expect(reqs[0].id).not.toBe("history-123");
+    expect(reqs[1].id).not.toBe("history-123");
+    expect(reqs[0].id).not.toBe(reqs[1].id); // 两条 id 互不相同
+  });
 });
 
 describe("renameRequest / updateRequestNote", () => {
