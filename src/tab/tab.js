@@ -586,8 +586,8 @@ function refreshTree() {
   colState.projects.forEach((p) => box.appendChild(renderProject(p)));
 }
 
-// 通用:构造一行(toggle + 就地改名 label + 操作按钮)
-function makeRow(kind, id, name, onRename, actions, onOpen) {
+// 通用:构造一行(toggle + 名称文本 + 操作按钮)。名称为纯文本,重命名走操作按钮弹窗
+function makeRow(kind, id, name, onOpen, actions) {
   const row = document.createElement("div");
   row.className = "ct-row ct-" + kind;
 
@@ -604,12 +604,11 @@ function makeRow(kind, id, name, onRename, actions, onOpen) {
     };
   }
 
-  const label = document.createElement("input");
+  const label = document.createElement("span");
   label.className = "ct-label";
-  label.value = name;
+  label.textContent = name;
   label.title = name;
-  label.onchange = () => onRename(label.value);
-  if (onOpen) label.ondblclick = onOpen; // 请求:双击回填(单击可编辑名)
+  if (onOpen) label.onclick = onOpen; // 项目/模块:点名字展开折叠;请求:点名字回填
 
   const act = document.createElement("span");
   act.className = "ct-actions";
@@ -630,11 +629,19 @@ function renderProject(p) {
   const node = document.createElement("div");
   node.className = "ct-node";
   const row = makeRow("proj", p.id, p.name,
-    async (name) => { colState = renameProject(colState, p.id, name); await saveCol(); },
+    () => { // 点名字:展开/折叠
+      if (expanded.has(p.id)) expanded.delete(p.id);
+      else expanded.add(p.id);
+      refreshTree();
+    },
     [
       { icon: "＋", title: "新建模块", fn: async () => {
           const name = prompt("模块名称"); if (!name) return;
           colState = addModule(colState, p.id, name); expanded.add(p.id); await saveCol(); refreshTree();
+        } },
+      { icon: "✎", title: "重命名项目", fn: async () => {
+          const name = prompt("重命名项目", p.name); if (name === null) return;
+          colState = renameProject(colState, p.id, name); await saveCol(); refreshTree();
         } },
       { icon: "↑", title: "上移", fn: async () => { colState = reorderProject(colState, p.id, -1); await saveCol(); refreshTree(); } },
       { icon: "↓", title: "下移", fn: async () => { colState = reorderProject(colState, p.id, 1); await saveCol(); refreshTree(); } },
@@ -661,12 +668,20 @@ function renderModule(p, m) {
   const node = document.createElement("div");
   node.className = "ct-node";
   const row = makeRow("mod", m.id, m.name,
-    async (name) => { colState = renameModule(colState, p.id, m.id, name); await saveCol(); },
+    () => { // 点名字:展开/折叠
+      if (expanded.has(m.id)) expanded.delete(m.id);
+      else expanded.add(m.id);
+      refreshTree();
+    },
     [
       { icon: "＋", title: "新建请求", fn: async () => {
           const req = { method: "GET", url: "https://", headers: {}, body: "", name: "新请求" };
           colState = addRequest(colState, p.id, m.id, req); expanded.add(m.id); await saveCol(); refreshTree();
           editor.setValue(toHttp(req));
+        } },
+      { icon: "✎", title: "重命名模块", fn: async () => {
+          const name = prompt("重命名模块", m.name); if (name === null) return;
+          colState = renameModule(colState, p.id, m.id, name); await saveCol(); refreshTree();
         } },
       { icon: "↑", title: "上移", fn: async () => { colState = reorderModule(colState, p.id, m.id, -1); await saveCol(); refreshTree(); } },
       { icon: "↓", title: "下移", fn: async () => { colState = reorderModule(colState, p.id, m.id, 1); await saveCol(); refreshTree(); } },
@@ -713,17 +728,21 @@ function renderRequest(p, m, r) {
   node.className = "ct-node";
   const open = () => loadIntoEditor(r);
   const row = makeRow("req", r.id, r.name,
-    async (name) => { colState = renameRequest(colState, p.id, m.id, r.id, name); await saveCol(); },
+    open, // 点名字:回填到编辑器
     [
       { icon: "▶", title: "回填到编辑器", fn: open },
-      { icon: "✎", title: "编辑备注", fn: () => toggleNote(node, p, m, r) },
+      { icon: "✎", title: "重命名请求", fn: async () => {
+          const name = prompt("重命名请求", r.name); if (name === null) return;
+          colState = renameRequest(colState, p.id, m.id, r.id, name); await saveCol(); refreshTree();
+        } },
+      { icon: "📝", title: "编辑备注", fn: () => toggleNote(node, p, m, r) },
       { icon: "⇄", title: "移动到其他模块", fn: () => moveRequestFlow(p, m, r) },
       { icon: "↑", title: "上移", fn: async () => { colState = reorderRequest(colState, p.id, m.id, r.id, -1); await saveCol(); refreshTree(); } },
       { icon: "↓", title: "下移", fn: async () => { colState = reorderRequest(colState, p.id, m.id, r.id, 1); await saveCol(); refreshTree(); } },
       { icon: "🗑", title: "删除请求", danger: true, fn: async () => {
           colState = removeRequest(colState, p.id, m.id, r.id); await saveCol(); refreshTree();
         } },
-    ], open);
+    ]);
   node.appendChild(row);
   return node;
 }
