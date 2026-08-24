@@ -23,7 +23,7 @@ body { margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-ser
 .tab { border: none; background: none; padding: 6px 10px; cursor: pointer; border-radius: 6px; }
 .tab.active { background: #eef2ff; color: #2563eb; }
 .panel { flex: 1; margin: 0; padding: 12px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
-.hidden { display: none; }
+.hidden { display: none !important; }
 .error-card { margin: 12px; padding: 16px; border: 1px solid #fca5a5; background: #fef2f2; border-radius: 8px; }
 .error-card h3 { margin: 0 0 8px; color: #dc2626; }
 .error-card .row { margin: 4px 0; font-size: 14px; }
