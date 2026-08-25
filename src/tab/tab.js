@@ -220,6 +220,12 @@ function renderHlItem(item) {
   saveBtn.title = "另存到请求库";
   saveBtn.onclick = () => openSaveModal(item);
 
+  const noteBtn = document.createElement("button");
+  noteBtn.className = "hl-btn";
+  noteBtn.textContent = item.note ? "备注*" : "备注";
+  noteBtn.title = item.note ? "查看/编辑备注(已有备注)" : "编辑备注";
+  noteBtn.onclick = () => toggleHlNote(li, item, noteBtn);
+
   const delBtn = document.createElement("button");
   delBtn.className = "hl-btn del";
   delBtn.textContent = "删除";
@@ -228,25 +234,34 @@ function renderHlItem(item) {
     historyCache = await loadHistory();
     syncHistoryViews();
   };
-  row1.append(name, loadBtn, saveBtn, delBtn);
+  row1.append(name, loadBtn, saveBtn, noteBtn, delBtn);
 
   const url = document.createElement("div");
   url.className = "hl-url";
   url.textContent = `${item.method} ${item.url}`;
 
+  li.append(row1, url);
+  return li;
+}
+
+// 展开/收起某条左下历史的备注表单(默认不显示)
+function toggleHlNote(li, item, btn) {
+  const exist = li.querySelector(".hl-note");
+  if (exist) { exist.remove(); return; }
   const note = document.createElement("textarea");
   note.className = "hl-note";
   note.placeholder = "填写备注…";
   note.value = item.note || "";
   note.onchange = async () => {
     await patchHistory(item.id, { note: note.value });
+    item.note = note.value; // 同步本地引用
+    btn.textContent = note.value ? "备注*" : "备注";
     historyCache = await loadHistory();
     // 备注变更无需重渲染左下(避免打断输入),仅同步弹窗数据源
     if (!modal.classList.contains("hidden")) renderHistoryPanel(searchInput.value);
   };
-
-  li.append(row1, url, note);
-  return li;
+  li.append(note);
+  note.focus();
 }
 
 // 历史数据变更后,同步刷新左下列表与(若打开的)弹窗

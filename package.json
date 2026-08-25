@@ -1,6 +1,6 @@
 {
   "name": "curl2rest",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "模仿 VSCode REST Client 的浏览器插件",
   "type": "module",
   "scripts": {
