@@ -13,7 +13,7 @@ import {
   loadCollections, saveCollections,
   addProject, renameProject, removeProject,
   addModule, renameModule, removeModule,
-  addRequest, renameRequest, updateRequestNote, updateRequest, removeRequest,
+  addRequest, renameRequest, updateRequest, removeRequest,
   moveRequest, reorderProject, reorderModule, reorderRequest,
   exportState, importState,
 } from "../core/collections.js";
@@ -791,13 +791,11 @@ function renderRequest(p, m, r) {
   const row = makeRow("req", r.id, r.name,
     open, // 点名字:回填到编辑器
     [
-      { icon: "▶", title: "回填到编辑器", fn: open },
       { icon: "✎", title: "重命名请求", fn: async () => {
           const name = prompt("重命名请求", r.name); if (name === null) return;
           colState = renameRequest(colState, p.id, m.id, r.id, name); await saveCol(); refreshTree();
           if (activeRef && activeRef.rid === r.id) { activeRef.name = name.trim() || r.name; refreshUpdateBtn(); }
         } },
-      { icon: "📝", title: "编辑备注", fn: () => toggleNote(node, p, m, r) },
       { icon: "⇄", title: "移动到其他模块", fn: () => moveRequestFlow(p, m, r) },
       { icon: "↑", title: "上移", fn: async () => { colState = reorderRequest(colState, p.id, m.id, r.id, -1); await saveCol(); refreshTree(); } },
       { icon: "↓", title: "下移", fn: async () => { colState = reorderRequest(colState, p.id, m.id, r.id, 1); await saveCol(); refreshTree(); } },
@@ -809,23 +807,6 @@ function renderRequest(p, m, r) {
     ]);
   node.appendChild(row);
   return node;
-}
-
-// 展开/收起某请求的备注编辑框
-function toggleNote(node, p, m, r) {
-  const exist = node.querySelector(".ct-req-note");
-  if (exist) { exist.remove(); return; }
-  const ta = document.createElement("textarea");
-  ta.className = "ct-req-note";
-  ta.placeholder = "填写备注…";
-  ta.value = r.note || "";
-  ta.onchange = async () => {
-    colState = updateRequestNote(colState, p.id, m.id, r.id, ta.value);
-    r.note = ta.value; // 同步本地引用,避免下次打开丢失
-    await saveCol();
-  };
-  node.appendChild(ta);
-  ta.focus();
 }
 
 // 折叠侧边栏(状态存 localStorage)

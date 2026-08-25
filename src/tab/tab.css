@@ -141,7 +141,6 @@ body { margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-ser
 .ct-actions button:hover { color: #2563eb; }
 .ct-actions button.ct-del:hover { color: #dc2626; }
 .ct-children { padding-left: 14px; }
-.ct-req-note { margin: 2px 0 4px 18px; width: calc(100% - 24px); box-sizing: border-box; font-size: 12px; border: 1px solid #eee; border-radius: 5px; padding: 3px 6px; resize: vertical; min-height: 26px; font-family: inherit; }
 
 /* 保存到弹窗 */
 .save-box { width: 420px; height: auto; }
