@@ -833,6 +833,22 @@ $("btn-add-project").onclick = async () => {
   refreshTree();
 };
 
+// 全部展开 / 全部收起(展开状态不持久化,与 expanded 一致)
+$("btn-toggle-all").onclick = () => {
+  // 收集所有可展开节点(项目 + 模块)的 id
+  const allIds = [];
+  colState.projects.forEach((p) => {
+    allIds.push(p.id);
+    p.modules.forEach((m) => allIds.push(m.id));
+  });
+  // 已全部展开 → 收起;否则 → 展开全部
+  const allExpanded = allIds.length > 0 && allIds.every((id) => expanded.has(id));
+  expanded.clear();
+  if (!allExpanded) allIds.forEach((id) => expanded.add(id));
+  $("btn-toggle-all").textContent = allExpanded ? "⊞" : "⊟";
+  refreshTree();
+};
+
 // 导出 JSON(下载文件)
 $("btn-export").onclick = () => {
   const blob = new Blob([JSON.stringify(exportState(colState), null, 2)], { type: "application/json" });

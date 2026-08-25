@@ -7,6 +7,11 @@
 
 ## [未发布]
 
+## [0.3.3] - 2026-08-25
+
+### 新增
+- **请求库全部展开/收起**:侧边栏头部新增「⊞/⊟」按钮,一键展开或收起全部项目与模块。
+
 ## [0.3.2] - 2026-08-24
 
 ### 新增
@@ -54,7 +59,8 @@
 - **小白友好错误**:请求出错时展示"发生了什么 / 可能原因 / 建议操作",技术细节可折叠查看。
 - **工具栏显示版本号**。
 
-[未发布]: https://example.com/compare/v0.3.2...HEAD
+[未发布]: https://example.com/compare/v0.3.3...HEAD
+[0.3.3]: https://example.com/compare/v0.3.2...v0.3.3
 [0.3.2]: https://example.com/compare/v0.3.1...v0.3.2
 [0.3.1]: https://example.com/compare/v0.3.0...v0.3.1
 [0.3.0]: https://example.com/compare/v0.2.0...v0.3.0
