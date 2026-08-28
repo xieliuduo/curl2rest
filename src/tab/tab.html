@@ -27,10 +27,24 @@
           <button id="btn-history">历史</button>
           <button id="btn-send" class="primary">发送 ▶</button>
           <button id="btn-save-collection" title="保存当前请求到请求库">保存到库 ⭑</button>
-          <button id="btn-update-collection" class="hidden" title="更新当前编辑内容到关联的请求">⬆ 更新到库</button>
+          <span id="request-save-status" class="request-save-status hidden"></span>
           <span id="app-version" class="app-version"></span>
+          <button id="btn-theme" class="theme-toggle" title="切换深色主题" aria-label="切换主题"></button>
         </div>
         <div id="editor" class="editor"></div>
+        <div id="request-note-resizer" class="request-note-resizer" title="拖拽调整备注面板高度"></div>
+        <div class="request-note">
+          <div class="request-note-head">
+            <label for="request-note-input" class="request-note-title">请求备注</label>
+            <span id="request-note-context" class="request-note-context">选择请求库中的请求后可编辑</span>
+            <span id="request-note-status" class="request-note-status"></span>
+          </div>
+          <textarea
+            id="request-note-input"
+            placeholder="记录接口用途、参数说明、关联需求等信息…"
+            disabled
+          ></textarea>
+        </div>
         <div id="history-resizer" class="history-resizer" title="拖拽调整历史面板高度"></div>
         <div class="history">
           <div class="history-title">历史记录</div>
@@ -61,7 +75,7 @@
       <div class="modal-box">
         <div class="modal-head">
           <span class="modal-title">历史记录</span>
-          <input id="history-search" class="modal-search" placeholder="搜索名称 / URL / 备注" />
+          <input id="history-search" class="modal-search" placeholder="搜索名称 / URL / 请求库路径 / 备注" />
           <button id="history-close" class="modal-close" title="关闭">✕</button>
         </div>
         <ul id="history-panel-list" class="history-panel-list"></ul>

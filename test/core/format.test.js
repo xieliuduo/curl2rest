@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  parseHttp, toHttp, parseCurl, toCurl, detectFormat, parseRequest,
+  parseHttp, toHttp, formatJsonBody, toReadableHttp,
+  parseCurl, toCurl, detectFormat, parseRequest,
 } from "../../src/core/format.js";
 import { ParseError } from "../../src/core/errors.js";
 
@@ -53,6 +54,44 @@ describe("toHttp", () => {
   it("无 body 不产生空行", () => {
     const out = toHttp({ method: "GET", url: "https://x.com", headers: {}, body: null });
     expect(out).toBe("GET https://x.com HTTP/1.1");
+  });
+});
+
+describe("formatJsonBody / toReadableHttp", () => {
+  it("对象和数组按 2 空格缩进并换行", () => {
+    expect(formatJsonBody('{"user":{"id":1,"roles":["admin","editor"]}}')).toBe([
+      "{",
+      '  "user": {',
+      '    "id": 1,',
+      '    "roles": [',
+      '      "admin",',
+      '      "editor"',
+      "    ]",
+      "  }",
+      "}",
+    ].join("\n"));
+  });
+
+  it("非 JSON 请求体保持原样", () => {
+    const body = "name=sample&enabled=true";
+    expect(formatJsonBody(body)).toBe(body);
+  });
+
+  it("保留字符串中的标点和大整数原始写法", () => {
+    const body = '{"text":"a,b:{c}","id":900719925474099312345}';
+    const out = formatJsonBody(body);
+    expect(out).toContain('"text": "a,b:{c}"');
+    expect(out).toContain('"id": 900719925474099312345');
+  });
+
+  it("生成适合编辑器阅读的 HTTP 文本", () => {
+    const out = toReadableHttp({
+      method: "POST",
+      url: "https://example.com/c",
+      headers: { "content-type": "application/json" },
+      body: '{"a":1,"b":[2,3]}',
+    });
+    expect(out).toContain('\n\n{\n  "a": 1,\n  "b": [\n    2,\n    3\n  ]\n}');
   });
 });
 

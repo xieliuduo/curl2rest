@@ -1,5 +1,5 @@
 import { createEditor } from "./editor.js";
-import { parseRequest, toHttp, toCurl } from "../core/format.js";
+import { parseRequest, toReadableHttp, toCurl } from "../core/format.js";
 import { substitute } from "../core/variables.js";
 import { describeError } from "../core/errors.js";
 import { loadHistory, pushHistory, patchHistory, deleteHistory } from "../core/history.js";
@@ -13,10 +13,15 @@ import {
   loadCollections, saveCollections,
   addProject, renameProject, removeProject,
   addModule, renameModule, removeModule,
-  addRequest, renameRequest, updateRequest, removeRequest,
+  addRequest, renameRequest, updateRequestNote, updateRequest, removeRequest,
   moveRequest, reorderProject, reorderModule, reorderRequest,
   exportState, importState,
 } from "../core/collections.js";
+
+const THEME_KEY = "curl2rest_theme";
+const themeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+let currentTheme = localStorage.getItem(THEME_KEY) || (themeMedia.matches ? "dark" : "light");
+document.documentElement.dataset.theme = currentTheme;
 
 const SAMPLE = [
   "POST https://httpbin.org/post HTTP/1.1",
@@ -38,6 +43,30 @@ const bodyToolbar = $("body-toolbar");
 const headersToolbar = $("headers-toolbar");
 const errorCard = $("error-card");
 
+// ---- Light / Dark 主题 ----
+function refreshThemeButton() {
+  const btn = $("btn-theme");
+  const dark = currentTheme === "dark";
+  btn.textContent = dark ? "☀ 浅色" : "☾ 深色";
+  btn.title = dark ? "切换到浅色主题" : "切换到深色主题";
+  btn.setAttribute("aria-pressed", String(dark));
+}
+
+function applyTheme(theme, persist = false) {
+  currentTheme = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = currentTheme;
+  if (persist) localStorage.setItem(THEME_KEY, currentTheme);
+  refreshThemeButton();
+}
+
+$("btn-theme").onclick = () => {
+  applyTheme(currentTheme === "dark" ? "light" : "dark", true);
+};
+themeMedia.addEventListener?.("change", (e) => {
+  if (!localStorage.getItem(THEME_KEY)) applyTheme(e.matches ? "dark" : "light");
+});
+refreshThemeButton();
+
 // 缓存最近一次响应,供复制按钮使用
 let lastResp = null;
 
@@ -52,7 +81,7 @@ function activeVars() {
 
 // ---- 格式转换按钮 ----
 $("btn-to-curl").onclick = () => tryConvert((obj) => toCurl(obj));
-$("btn-to-http").onclick = () => tryConvert((obj) => toHttp(obj));
+$("btn-to-http").onclick = () => tryConvert((obj) => toReadableHttp(obj));
 
 function tryConvert(fn) {
   try {
@@ -88,7 +117,7 @@ async function send() {
     return;
   }
   renderResponse(resp);
-  historyCache = await pushHistory(req);
+  historyCache = await pushHistory(req, activeCollectionHistoryMeta());
   refreshHistory(historyCache);
 }
 
@@ -170,8 +199,8 @@ let historyCache = [];
 
 // 把某条历史回填到编辑器(优先按原格式,退回 HTTP 报文)
 function loadIntoEditor(item) {
-  editor.setValue(toHttp(item));
   if (typeof clearActiveRef === "function") clearActiveRef(); // 历史回填不关联请求库
+  editor.setValue(toReadableHttp(item));
 }
 
 // 左下角历史列表:可滚动,单条可改名/备注/回填/删除(数据与弹窗同源)
@@ -191,10 +220,30 @@ function refreshHistory(list) {
   historyCache.forEach((item) => ul.appendChild(renderHlItem(item)));
 }
 
+function formatHistoryTime(at) {
+  const date = new Date(at);
+  if (!Number.isFinite(date.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join("-") + " " + [
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join(":");
+}
+
 // 左下单条历史项
 function renderHlItem(item) {
   const li = document.createElement("li");
   li.className = "hl-item";
+  li.title = "点击切换到此请求";
+  li.onclick = (e) => {
+    if (e.target.closest("input, textarea, button")) return;
+    loadIntoEditor(item);
+  };
 
   const row1 = document.createElement("div");
   row1.className = "hl-row1";
@@ -209,10 +258,9 @@ function renderHlItem(item) {
     syncHistoryViews();
   };
 
-  const loadBtn = document.createElement("button");
-  loadBtn.className = "hl-btn load";
-  loadBtn.textContent = "回填";
-  loadBtn.onclick = () => loadIntoEditor(item);
+  const time = document.createElement("span");
+  time.className = "hl-time";
+  time.textContent = formatHistoryTime(item.at);
 
   const saveBtn = document.createElement("button");
   saveBtn.className = "hl-btn load";
@@ -234,13 +282,19 @@ function renderHlItem(item) {
     historyCache = await loadHistory();
     syncHistoryViews();
   };
-  row1.append(name, loadBtn, saveBtn, noteBtn, delBtn);
+  row1.append(name, time, saveBtn, noteBtn, delBtn);
 
   const url = document.createElement("div");
   url.className = "hl-url";
   url.textContent = `${item.method} ${item.url}`;
 
   li.append(row1, url);
+  if (item.collectionPath) {
+    const source = document.createElement("div");
+    source.className = "hl-collection";
+    source.textContent = `请求库 · ${item.collectionPath}`;
+    li.appendChild(source);
+  }
   return li;
 }
 
@@ -295,7 +349,8 @@ function renderHistoryPanel(keyword = "") {
     return (
       (item.name || "").toLowerCase().includes(kw) ||
       (item.url || "").toLowerCase().includes(kw) ||
-      (item.note || "").toLowerCase().includes(kw)
+      (item.note || "").toLowerCase().includes(kw) ||
+      (item.collectionPath || "").toLowerCase().includes(kw)
     );
   });
 
@@ -314,6 +369,12 @@ function renderHistoryPanel(keyword = "") {
 function renderHistItem(item) {
   const li = document.createElement("li");
   li.className = "hist-item";
+  li.title = "点击切换到此请求";
+  li.onclick = (e) => {
+    if (e.target.closest("input, textarea, button")) return;
+    loadIntoEditor(item);
+    closeHistoryModal();
+  };
 
   const row1 = document.createElement("div");
   row1.className = "hist-row1";
@@ -328,12 +389,12 @@ function renderHistItem(item) {
     syncHistoryViews();
   };
 
+  const time = document.createElement("span");
+  time.className = "hist-time";
+  time.textContent = formatHistoryTime(item.at);
+
   const actions = document.createElement("div");
   actions.className = "hist-actions";
-  const loadBtn = document.createElement("button");
-  loadBtn.className = "load";
-  loadBtn.textContent = "回填";
-  loadBtn.onclick = () => { loadIntoEditor(item); closeHistoryModal(); };
   const saveBtn = document.createElement("button");
   saveBtn.className = "load";
   saveBtn.textContent = "另存";
@@ -347,12 +408,16 @@ function renderHistItem(item) {
     historyCache = await loadHistory();
     syncHistoryViews();
   };
-  actions.append(loadBtn, saveBtn, delBtn);
-  row1.append(name, actions);
+  actions.append(saveBtn, delBtn);
+  row1.append(name, time, actions);
 
   const url = document.createElement("div");
   url.className = "hist-url";
   url.textContent = `${item.method} ${item.url}`;
+
+  const source = document.createElement("div");
+  source.className = "hist-collection";
+  source.textContent = item.collectionPath ? `请求库 · ${item.collectionPath}` : "";
 
   const note = document.createElement("textarea");
   note.className = "hist-note";
@@ -364,7 +429,9 @@ function renderHistItem(item) {
     refreshHistory(historyCache);
   };
 
-  li.append(row1, url, note);
+  li.append(row1, url);
+  if (item.collectionPath) li.appendChild(source);
+  li.appendChild(note);
   return li;
 }
 
@@ -583,42 +650,230 @@ function renderEnvModal() {
 let colState = { projects: [] };
 // 记录展开状态(id 集合),避免重渲染后全部折叠
 const expanded = new Set();
+// 当前在请求树中点击的节点;选中请求时同时高亮所属模块和项目
+let treeSelection = null; // { kind: "proj"|"mod"|"req", pid, mid?, rid? }
 
-// 当前编辑器关联的请求库条目(用于「更新到库」);null 表示未关联
+// 当前编辑器关联的请求库条目;关联后编辑内容与备注都会自动保存
 let activeRef = null;        // { pid, mid, rid, name }
-let activeSnapshot = "";     // 关联时编辑器的原始内容,用于判断是否被改动
+let activeSnapshot = "";     // 最近一次成功保存的编辑器内容
+const requestSaveStatus = $("request-save-status");
+let requestContentSaveTimer = null;
+const requestNoteInput = $("request-note-input");
+const requestNoteContext = $("request-note-context");
+const requestNoteStatus = $("request-note-status");
+let requestNoteSaveTimer = null;
+let requestNoteSaveChain = Promise.resolve();
 
-// 建立/清除编辑器与某条请求的关联
-function setActiveRef(pid, mid, rid, name, text) {
-  activeRef = { pid, mid, rid, name };
-  activeSnapshot = text;
-  refreshUpdateBtn();
+// 所有请求库写入排队执行,避免备注防抖保存与删除/移动等操作相互覆盖
+function queueCollectionsSave(stateToSave) {
+  const operation = requestNoteSaveChain
+    .catch(() => {})
+    .then(() => saveCollections(stateToSave));
+  requestNoteSaveChain = operation.catch(() => {});
+  return operation;
 }
-function clearActiveRef() {
+
+// 查找当前关联的请求;请求被删除/导入替换后可能找不到
+function activeRequest() {
+  if (!activeRef) return null;
+  const p = colState.projects.find((x) => x.id === activeRef.pid);
+  const m = p && p.modules.find((x) => x.id === activeRef.mid);
+  return (m && m.requests.find((x) => x.id === activeRef.rid)) || null;
+}
+
+// 当前请求写入历史时携带请求库名称与项目/模块路径
+function activeCollectionHistoryMeta() {
+  if (!activeRef) return {};
+  const p = colState.projects.find((x) => x.id === activeRef.pid);
+  const m = p && p.modules.find((x) => x.id === activeRef.mid);
+  const r = m && m.requests.find((x) => x.id === activeRef.rid);
+  if (!p || !m || !r) return {};
+  return {
+    name: r.name,
+    collectionPath: `${p.name} / ${m.name}`,
+    collectionRef: { pid: p.id, mid: m.id, rid: r.id },
+  };
+}
+
+function refreshRequestNotePanel() {
+  const req = activeRequest();
+  requestNoteInput.disabled = !req;
+  requestNoteInput.value = req?.note || "";
+  requestNoteContext.textContent = req
+    ? `关联: ${activeRef.name}`
+    : "选择请求库中的请求后可编辑";
+  requestNoteStatus.textContent = "";
+}
+
+// 输入时立即更新内存状态,停止输入 500ms 后串行写入 storage
+function persistRequestNote() {
+  const stateToSave = colState;
+  const ref = activeRef && { ...activeRef };
+  requestNoteStatus.textContent = "保存中…";
+  queueCollectionsSave(stateToSave)
+    .then(() => {
+      if (ref && activeRef && ref.rid === activeRef.rid && requestNoteInput.value === (activeRequest()?.note || "")) {
+        requestNoteStatus.textContent = "已自动保存";
+      }
+    })
+    .catch(() => {
+      if (ref && activeRef && ref.rid === activeRef.rid) requestNoteStatus.textContent = "保存失败";
+    });
+}
+
+function flushRequestNoteSave() {
+  if (!requestNoteSaveTimer) return;
+  clearTimeout(requestNoteSaveTimer);
+  requestNoteSaveTimer = null;
+  persistRequestNote();
+}
+
+requestNoteInput.oninput = () => {
+  if (!activeRef || !activeRequest()) return;
+  colState = updateRequestNote(
+    colState,
+    activeRef.pid,
+    activeRef.mid,
+    activeRef.rid,
+    requestNoteInput.value
+  );
+  requestNoteStatus.textContent = "待保存";
+  clearTimeout(requestNoteSaveTimer);
+  requestNoteSaveTimer = setTimeout(() => {
+    requestNoteSaveTimer = null;
+    persistRequestNote();
+  }, 500);
+};
+requestNoteInput.onchange = flushRequestNoteSave;
+
+// ---- 请求备注面板高度可拖拽(存 localStorage) ----
+(() => {
+  const panel = document.querySelector(".request-note");
+  const resizer = $("request-note-resizer");
+  const KEY = "curl2rest_request_note_h";
+  const MIN_HEIGHT = 84;
+  const MAX_HEIGHT = 500;
+
+  const saved = parseInt(localStorage.getItem(KEY), 10);
+  if (saved >= MIN_HEIGHT && saved <= MAX_HEIGHT) panel.style.flexBasis = saved + "px";
+
+  let dragging = false;
+  let startY = 0;
+  let startH = 0;
+  resizer.addEventListener("mousedown", (e) => {
+    dragging = true;
+    startY = e.clientY;
+    startH = panel.getBoundingClientRect().height;
+    resizer.classList.add("dragging");
+    document.body.style.userSelect = "none";
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    // 拖拽条位于面板上方:向上拖变高、向下拖变矮
+    const h = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, startH + startY - e.clientY));
+    panel.style.flexBasis = h + "px";
+  });
+  window.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false;
+    resizer.classList.remove("dragging");
+    document.body.style.userSelect = "";
+    localStorage.setItem(KEY, parseInt(panel.style.flexBasis, 10));
+  });
+})();
+
+function setRequestSaveStatus(text = "", type = "") {
+  requestSaveStatus.textContent = text;
+  requestSaveStatus.className = "request-save-status";
+  requestSaveStatus.classList.toggle("hidden", !text);
+  if (type) requestSaveStatus.classList.add(type);
+}
+
+// 把当前编辑器内容自动更新到关联请求;格式错误时保留上次有效内容
+function persistRequestContent() {
+  if (!activeRef || !activeRequest()) return;
+  const text = editor.getValue();
+  if (text === activeSnapshot) {
+    setRequestSaveStatus("已自动保存");
+    return;
+  }
+
+  let req;
+  try {
+    req = parseRequest(substitute(text, activeVars()));
+  } catch {
+    setRequestSaveStatus("格式有误，未保存", "error");
+    return;
+  }
+
+  const ref = { ...activeRef };
+  const stateToSave = updateRequest(colState, ref.pid, ref.mid, ref.rid, req);
+  colState = stateToSave;
+  setRequestSaveStatus("保存中…", "pending");
+  queueCollectionsSave(stateToSave)
+    .then(() => {
+      if (activeRef && activeRef.rid === ref.rid) {
+        activeSnapshot = text;
+        if (editor.getValue() === text) setRequestSaveStatus("已自动保存");
+      }
+    })
+    .catch(() => {
+      if (activeRef && activeRef.rid === ref.rid) {
+        setRequestSaveStatus("保存失败", "error");
+      }
+    });
+}
+
+function flushRequestContentSave() {
+  if (!requestContentSaveTimer) return;
+  clearTimeout(requestContentSaveTimer);
+  requestContentSaveTimer = null;
+  persistRequestContent();
+}
+
+// 建立关联。openInEditor=true 时先解除旧关联再回填,避免写到上一个请求
+function setActiveRef(pid, mid, rid, name, text, openInEditor = false) {
+  flushRequestContentSave();
+  flushRequestNoteSave();
   activeRef = null;
   activeSnapshot = "";
-  refreshUpdateBtn();
+  if (openInEditor) editor.setValue(text);
+  activeRef = { pid, mid, rid, name };
+  activeSnapshot = text;
+  treeSelection = { kind: "req", pid, mid, rid };
+  setRequestSaveStatus("已自动保存");
+  refreshRequestNotePanel();
+  refreshTree();
+}
+function clearActiveRef() {
+  flushRequestContentSave();
+  flushRequestNoteSave();
+  activeRef = null;
+  activeSnapshot = "";
+  if (treeSelection?.kind === "req") treeSelection = null;
+  setRequestSaveStatus();
+  refreshRequestNotePanel();
+  refreshTree();
 }
 
-// 编辑器内容变化时:关联存在且内容与快照不一致 → 高亮更新按钮
+// 编辑器内容变化时:停止输入 700ms 后自动更新当前关联请求
 function onEditorChange() {
-  refreshUpdateBtn();
-}
-
-// 刷新「更新到库」按钮的显隐与脏高亮
-function refreshUpdateBtn() {
-  const btn = $("btn-update-collection");
-  if (!btn) return;
-  if (!activeRef) { btn.classList.add("hidden"); return; }
-  btn.classList.remove("hidden");
-  const dirty = editor.getValue() !== activeSnapshot;
-  btn.classList.toggle("dirty", dirty);
-  btn.textContent = dirty ? `⬆ 更新到库 *` : `⬆ 更新到库`;
-  btn.title = `更新「${activeRef.name}」到请求库`;
+  if (!activeRef) return;
+  clearTimeout(requestContentSaveTimer);
+  if (editor.getValue() === activeSnapshot) {
+    requestContentSaveTimer = null;
+    setRequestSaveStatus("已自动保存");
+    return;
+  }
+  setRequestSaveStatus("待保存", "pending");
+  requestContentSaveTimer = setTimeout(() => {
+    requestContentSaveTimer = null;
+    persistRequestContent();
+  }, 700);
 }
 
 async function saveCol() {
-  await saveCollections(colState);
+  await queueCollectionsSave(colState);
 }
 
 // 渲染整棵树
@@ -635,10 +890,26 @@ function refreshTree() {
   colState.projects.forEach((p) => box.appendChild(renderProject(p)));
 }
 
-// 通用:构造一行(toggle + 名称文本 + 操作按钮)。名称为纯文本,重命名走操作按钮弹窗
+function applyTreeSelection(row, kind, pid, mid = "", rid = "") {
+  if (!treeSelection) return;
+  const selected =
+    (kind === "proj" && treeSelection.kind === "proj" && treeSelection.pid === pid) ||
+    (kind === "mod" && treeSelection.kind === "mod" && treeSelection.pid === pid && treeSelection.mid === mid) ||
+    (kind === "req" && treeSelection.kind === "req" &&
+      treeSelection.pid === pid && treeSelection.mid === mid && treeSelection.rid === rid);
+  const related =
+    (kind === "proj" && treeSelection.pid === pid && treeSelection.kind !== "proj") ||
+    (kind === "mod" && treeSelection.kind === "req" &&
+      treeSelection.pid === pid && treeSelection.mid === mid);
+  row.classList.toggle("ct-selected", selected);
+  row.classList.toggle("ct-related", related);
+}
+
+// 通用:构造一行(toggle + 名称文本 + 操作按钮)。整行可点击,操作按钮不触发选中
 function makeRow(kind, id, name, onOpen, actions) {
   const row = document.createElement("div");
   row.className = "ct-row ct-" + kind;
+  if (onOpen) row.onclick = onOpen;
 
   const toggle = document.createElement("span");
   toggle.className = "ct-toggle";
@@ -646,18 +917,12 @@ function makeRow(kind, id, name, onOpen, actions) {
     toggle.textContent = "";
   } else {
     toggle.textContent = expanded.has(id) ? "▾" : "▸";
-    toggle.onclick = () => {
-      if (expanded.has(id)) expanded.delete(id);
-      else expanded.add(id);
-      refreshTree();
-    };
   }
 
   const label = document.createElement("span");
   label.className = "ct-label";
   label.textContent = name;
   label.title = name;
-  if (onOpen) label.onclick = onOpen; // 项目/模块:点名字展开折叠;请求:点名字回填
 
   const act = document.createElement("span");
   act.className = "ct-actions";
@@ -678,7 +943,8 @@ function renderProject(p) {
   const node = document.createElement("div");
   node.className = "ct-node";
   const row = makeRow("proj", p.id, p.name,
-    () => { // 点名字:展开/折叠
+    () => { // 点整行:选中并展开/折叠
+      treeSelection = { kind: "proj", pid: p.id };
       if (expanded.has(p.id)) expanded.delete(p.id);
       else expanded.add(p.id);
       refreshTree();
@@ -697,11 +963,14 @@ function renderProject(p) {
       { icon: "🗑", title: "删除项目", danger: true, fn: async () => {
           const cnt = p.modules.reduce((s, m) => s + m.requests.length, 0);
           if (!confirm(`删除项目「${p.name}」? 将连同 ${p.modules.length} 个模块、${cnt} 个请求一起删除。`)) return;
+          if (activeRef && activeRef.pid === p.id) clearActiveRef();
+          if (treeSelection?.pid === p.id) treeSelection = null;
           expanded.delete(p.id);
           p.modules.forEach((mm) => expanded.delete(mm.id));
           colState = removeProject(colState, p.id); await saveCol(); refreshTree();
         } },
     ]);
+  applyTreeSelection(row, "proj", p.id);
   node.appendChild(row);
 
   if (expanded.has(p.id)) {
@@ -717,7 +986,8 @@ function renderModule(p, m) {
   const node = document.createElement("div");
   node.className = "ct-node";
   const row = makeRow("mod", m.id, m.name,
-    () => { // 点名字:展开/折叠
+    () => { // 点整行:选中并展开/折叠
+      treeSelection = { kind: "mod", pid: p.id, mid: m.id };
       if (expanded.has(m.id)) expanded.delete(m.id);
       else expanded.add(m.id);
       refreshTree();
@@ -729,9 +999,8 @@ function renderModule(p, m) {
           // 回填模板并关联到这条新请求
           const mod = colState.projects.find((x) => x.id === p.id).modules.find((x) => x.id === m.id);
           const created = mod.requests[mod.requests.length - 1];
-          const text = toHttp(created);
-          editor.setValue(text);
-          setActiveRef(p.id, m.id, created.id, created.name, text);
+          const text = toReadableHttp(created);
+          setActiveRef(p.id, m.id, created.id, created.name, text, true);
         } },
       { icon: "✎", title: "重命名模块", fn: async () => {
           const name = prompt("重命名模块", m.name); if (name === null) return;
@@ -741,10 +1010,13 @@ function renderModule(p, m) {
       { icon: "↓", title: "下移", fn: async () => { colState = reorderModule(colState, p.id, m.id, 1); await saveCol(); refreshTree(); } },
       { icon: "🗑", title: "删除模块", danger: true, fn: async () => {
           if (!confirm(`删除模块「${m.name}」? 将连同 ${m.requests.length} 个请求一起删除。`)) return;
+          if (activeRef && activeRef.pid === p.id && activeRef.mid === m.id) clearActiveRef();
+          if (treeSelection?.pid === p.id && treeSelection?.mid === m.id) treeSelection = null;
           expanded.delete(m.id);
           colState = removeModule(colState, p.id, m.id); await saveCol(); refreshTree();
         } },
     ]);
+  applyTreeSelection(row, "mod", p.id, m.id);
   node.appendChild(row);
 
   if (expanded.has(m.id)) {
@@ -776,17 +1048,20 @@ async function moveRequestFlow(p, m, r) {
   expanded.add(t.pid); expanded.add(t.mid);
   // 若移动的是当前关联请求,同步关联到新位置
   if (activeRef && activeRef.rid === r.id) { activeRef.pid = t.pid; activeRef.mid = t.mid; }
+  if (treeSelection?.kind === "req" && treeSelection.rid === r.id) {
+    treeSelection.pid = t.pid;
+    treeSelection.mid = t.mid;
+  }
   await saveCol(); refreshTree();
 }
 
 function renderRequest(p, m, r) {
   const node = document.createElement("div");
   node.className = "ct-node";
-  // 回填到编辑器并建立「更新到库」关联(快照用实际写入的文本)
+  // 回填到编辑器并建立自动保存关联
   const open = () => {
-    const text = toHttp(r);
-    editor.setValue(text);
-    setActiveRef(p.id, m.id, r.id, r.name, text);
+    const text = toReadableHttp(r);
+    setActiveRef(p.id, m.id, r.id, r.name, text, true);
   };
   const row = makeRow("req", r.id, r.name,
     open, // 点名字:回填到编辑器
@@ -794,7 +1069,10 @@ function renderRequest(p, m, r) {
       { icon: "✎", title: "重命名请求", fn: async () => {
           const name = prompt("重命名请求", r.name); if (name === null) return;
           colState = renameRequest(colState, p.id, m.id, r.id, name); await saveCol(); refreshTree();
-          if (activeRef && activeRef.rid === r.id) { activeRef.name = name.trim() || r.name; refreshUpdateBtn(); }
+          if (activeRef && activeRef.rid === r.id) {
+            activeRef.name = name.trim() || r.name;
+            refreshRequestNotePanel();
+          }
         } },
       { icon: "⇄", title: "移动到其他模块", fn: () => moveRequestFlow(p, m, r) },
       { icon: "↑", title: "上移", fn: async () => { colState = reorderRequest(colState, p.id, m.id, r.id, -1); await saveCol(); refreshTree(); } },
@@ -805,6 +1083,7 @@ function renderRequest(p, m, r) {
           colState = removeRequest(colState, p.id, m.id, r.id); await saveCol(); refreshTree();
         } },
     ]);
+  applyTreeSelection(row, "req", p.id, m.id, r.id);
   node.appendChild(row);
   return node;
 }
@@ -864,6 +1143,7 @@ $("import-file").onchange = async (e) => {
   try {
     const incoming = JSON.parse(await file.text());
     const merge = confirm("确定=合并到现有请求库;取消=整体替换现有请求库。");
+    clearActiveRef();
     colState = importState(colState, incoming, merge ? "merge" : "replace");
     await saveCol();
     refreshTree();
@@ -940,12 +1220,18 @@ $("save-confirm").onclick = async () => {
   if (!pid || !mid) { alert("请选择项目和模块(可用「+ 新建」创建)。"); return; }
   const name = $("save-name").value.trim();
   // 空名不传 name 键,让 core 回退到默认 `${method} ${url}`
-  const req = { ...pendingReq };
+  const req = {
+    method: pendingReq.method,
+    url: pendingReq.url,
+    headers: pendingReq.headers || {},
+    body: pendingReq.body ?? null,
+    note: pendingReq.note || "",
+  };
   if (name) req.name = name; else delete req.name;
   colState = addRequest(colState, pid, mid, req);
   expanded.add(pid); expanded.add(mid);
   await saveCol(); refreshTree();
-  // 若来源是编辑器,把编辑器关联到刚保存的这条请求,便于后续「更新到库」
+  // 若来源是编辑器,把编辑器关联到刚保存的请求,后续改动自动更新
   if (pendingFromEditor) {
     const mod = colState.projects.find((x) => x.id === pid).modules.find((x) => x.id === mid);
     const created = mod.requests[mod.requests.length - 1];
@@ -967,23 +1253,6 @@ $("btn-save-collection").onclick = () => {
     return;
   }
   openSaveModal(req, true);
-};
-
-// 「更新到库」:把当前编辑内容覆盖保存回关联的请求(覆盖前确认)
-$("btn-update-collection").onclick = async () => {
-  if (!activeRef) return;
-  let req;
-  try {
-    req = parseRequest(substitute(editor.getValue(), activeVars()));
-  } catch (e) {
-    renderError(e.code, e.message);
-    return;
-  }
-  if (!confirm(`确定用当前编辑内容更新「${activeRef.name}」?`)) return;
-  colState = updateRequest(colState, activeRef.pid, activeRef.mid, activeRef.rid, req);
-  await saveCol(); refreshTree();
-  activeSnapshot = editor.getValue(); // 重置快照,回到未改动状态
-  refreshUpdateBtn();
 };
 
 // ---- 初始化 ----

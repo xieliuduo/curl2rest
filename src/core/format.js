@@ -51,6 +51,78 @@ export function toHttp(obj) {
   return out;
 }
 
+/**
+ * JSON 请求体美化。先用 JSON.parse 校验,再直接格式化原始字符,
+ * 避免 JSON.stringify 改变大整数精度、重复键或数字写法。
+ * 非 JSON 内容保持原样。
+ */
+export function formatJsonBody(body) {
+  if (body == null) return body;
+  const source = String(body);
+  const text = source.trim();
+  if (!text) return source;
+  try {
+    JSON.parse(text);
+  } catch {
+    return source;
+  }
+
+  let out = "";
+  let indent = 0;
+  let inString = false;
+  let escaped = false;
+  const spaces = () => "  ".repeat(indent);
+  const nextNonSpace = (from) => {
+    for (let i = from; i < text.length; i++) {
+      if (!/\s/.test(text[i])) return text[i];
+    }
+    return "";
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      out += ch;
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+    } else if (ch === "{" || ch === "[") {
+      out += ch;
+      const close = ch === "{" ? "}" : "]";
+      if (nextNonSpace(i + 1) !== close) {
+        indent++;
+        out += "\n" + spaces();
+      }
+    } else if (ch === "}" || ch === "]") {
+      const open = ch === "}" ? "{" : "[";
+      if (out.endsWith(open)) {
+        out += ch;
+      } else {
+        indent--;
+        out += "\n" + spaces() + ch;
+      }
+    } else if (ch === ",") {
+      out += ",\n" + spaces();
+    } else if (ch === ":") {
+      out += ": ";
+    } else if (!/\s/.test(ch)) {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+/** RequestObject → 适合编辑器阅读的 HTTP 文本(JSON body 自动缩进) */
+export function toReadableHttp(obj) {
+  return toHttp({ ...obj, body: formatJsonBody(obj.body) });
+}
+
 /** 判断编辑器文本是 curl 还是 http 报文 */
 export function detectFormat(text) {
   return /^\s*curl\b/i.test(text) ? "curl" : "http";
