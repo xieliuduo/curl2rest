@@ -1,9 +1,21 @@
 {
   "manifest_version": 3,
   "name": "curl2rest",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "输入 HTTP 报文或 curl 命令,一键发送并查看响应",
-  "action": { "default_title": "打开 curl2rest" },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "打开 curl2rest",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
   "background": { "service_worker": "src/background/service-worker.js", "type": "module" },
   "permissions": ["storage"],
   "host_permissions": ["<all_urls>"]
